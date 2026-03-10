@@ -3,7 +3,7 @@ const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
 let employeeId = null;
 let employeeName = '';
-let botApiUrl = 'http://localhost:8000/chat';
+let botApiUrl = 'https://hr-chatbot-production.up.railway.app/chat';
 let botActive = true;
 let loadingTimeout = null;
 
