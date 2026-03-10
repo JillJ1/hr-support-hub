@@ -140,9 +140,9 @@ async function sendMessage() {
     if (botActive) {
         try {
             const response = await fetch(botApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: text })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: text, ticket_id: currentTicketId })
             });
             if (!response.ok) throw new Error('Bot API error');
             const data = await response.json();
