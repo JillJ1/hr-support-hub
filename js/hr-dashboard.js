@@ -4,6 +4,7 @@ let currentHrId = null;
 let currentHrName = '';
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
+const vercelUrl = 'https://hr-support-hub.vercel.app';
 
 // Toast notification
 function showToast(message, type = 'info') {
@@ -540,7 +541,7 @@ async function submitNewTicket(e) {
 
         // Notify HR
         const hrEmail = 'jcjj.1104@gmail.com'; // Replace with actual HR email
-        const ticketLink = `http://localhost:3000/hr/ticket.html?id=${newTicket.id}`;
+        const ticketLink = `${vercelUrl}/hr/ticket.html?id=${newTicket.id}`;
         const emailPayload = {
             to: hrEmail,
             subject: `New ticket created on behalf of ${empName}`,
