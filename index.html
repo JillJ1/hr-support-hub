@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Christ Hospital HR Support</title>
+    <style>
+        /* --- Apple-inspired login styles --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f2f2f7; /* Apple light gray */
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.03);
+            width: 100%;
+            max-width: 400px;
+            padding: 40px 32px;
+        }
+
+        .logo-container {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo {
+            max-width: 180px;
+            height: auto;
+            border: 1px solid #e5e5ea;      /* subtle border */
+            border-radius: 12px;              /* rounded corners */
+            padding: 8px;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1c1c1e;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #e5e5ea;
+            border-radius: 10px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+            background: #ffffff;
+        }
+
+        input:focus {
+            border-color: #0a5b8c;
+            box-shadow: 0 0 0 3px rgba(10,91,140,0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #0a5b8c;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+            margin-top: 8px;
+        }
+
+        button:hover {
+            background: #074a70;
+        }
+
+        #error-message {
+            color: #b71c1c;
+            text-align: center;
+            margin-top: 16px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-container">
+            <img src="/images/logo.png" alt="Christ Hospital" class="logo">
+        </div>
+        <h1>Employee Support Login</h1>
+        <form id="login-form">
+            <div class="form-group">
+                <input type="email" id="email" placeholder="Email" required>
+            </div>
+            <div class="form-group">
+                <input type="password" id="password" placeholder="Password" required>
+            </div>
+            <button type="submit">Log In</button>
+        </form>
+        <p id="error-message"></p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chat - HR Support</title>
+    <style>
+        /* --- Global Styles (same as tickets page) --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        :root {
+            --primary-blue: #0a5b8c;
+            --primary-blue-dark: #074a70;
+            --brand-yellow: #ffc107;
+            --bg-light: #f2f2f7;
+            --card-bg: #ffffff;
+            --text-dark: #1c1c1e;
+            --text-muted: #6c6c70;
+            --border-color: #e5e5ea;
+            --bot-bubble: #e9e9ed;
+            --employee-bubble: #0a5b8c;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Header --- */
+        header {
+            background-color: var(--primary-blue);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .back-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .back-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        header h1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        /* --- Buttons --- */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: 0.15s;
+        }
+        .btn-secondary {
+            background: transparent;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* --- Chat Container --- */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 1000px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 20px;
+        }
+        .chat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* --- Messages Area --- */
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scrollbar-width: thin;
+            scrollbar-color: #c6c6c8 transparent;
+        }
+        .messages::-webkit-scrollbar { width: 6px; }
+        .messages::-webkit-scrollbar-thumb { background: #c6c6c8; border-radius: 3px; }
+
+        .message {
+            display: flex;
+            margin-bottom: 8px;
+        }
+        .message.employee {
+            justify-content: flex-end;
+        }
+        .message.bot {
+            justify-content: flex-start;
+        }
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+        .message.bot .message-bubble {
+            background: var(--bot-bubble);
+            color: var(--text-dark);
+            border-bottom-left-radius: 4px;
+        }
+        .message.employee .message-bubble {
+            background: var(--employee-bubble);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        /* --- Typing Indicator --- */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            background: var(--bot-bubble);
+            border-radius: 18px;
+            width: fit-content;
+            border-bottom-left-radius: 4px;
+        }
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #8e8e93;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+            0%,60%,100% { transform: translateY(0); }
+            30% { transform: translateY(-6px); }
+        }
+
+        /* --- Input Area --- */
+        .input-area {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            background: white;
+        }
+        .input-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            background: var(--bg-light);
+            border-radius: 30px;
+            border: 1px solid var(--border-color);
+            padding: 4px 4px 4px 16px;
+        }
+        #message-input {
+            flex: 1;
+            border: none;
+            padding: 10px 0;
+            font-size: 0.95rem;
+            outline: none;
+            background: transparent;
+        }
+        #send-btn {
+            background: var(--primary-blue);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #send-btn:hover {
+            background: var(--primary-blue-dark);
+        }
+        #send-btn:disabled {
+            background: #c6c6c8;
+            cursor: not-allowed;
+        }
+
+        /* --- Escalate Button --- */
+        #escalate-btn {
+            background: #ffd60a;
+            color: #1c1c1e;
+            border: none;
+        }
+        #escalate-btn:hover {
+            background: #ffc107;
+        }
+        #escalate-btn:disabled {
+            background: #e5e5ea;
+            color: #8e8e93;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <button id="back-btn" class="back-btn">←</button>
+            <h1>HR Knowledge Assistant</h1>
+        </div>
+        <div>
+            <button id="escalate-btn" class="btn" style="background: #ffd60a; color: #1c1c1e; margin-right: 10px;">Talk to HR</button>
+            <button id="logout-btn" class="btn btn-secondary">
+                <span class="btn-text-hide-mobile">Logout</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="chat-container">
+        <div class="chat-card">
+            <div class="messages" id="messages"></div>
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="message-input" placeholder="Type your question..." autocomplete="off">
+                    <button id="send-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/classify.js"></script>
+    <script src="/js/employee-chat.js"></script>
+</body>
+</html>
