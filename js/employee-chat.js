@@ -1,5 +1,7 @@
 // employee-chat.js
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
+const vercelUrl = 'https://hr-support-hub.vercel.app'; // Your live frontend URL
+
 let currentTicketId = null;
 let employeeId = null;
 let employeeName = '';
@@ -198,9 +200,9 @@ async function escalateToHR() {
         return;
     }
 
-    // Notify HR of escalation
+    // Notify HR of escalation – link now points to live Vercel domain
     const hrEmail = 'jcjj.1104@gmail.com'; // Replace with actual HR email later
-    const ticketLink = `http://localhost:3000/hr/ticket.html?id=${currentTicketId}`;
+    const ticketLink = `${vercelUrl}/hr/ticket.html?id=${currentTicketId}`;
     const emailPayload = {
         to: hrEmail,
         subject: `Ticket escalated by ${employeeName}`,
