@@ -1,43 +1,48 @@
 // employee-chat.js
-
-// ==================== GLOBAL CONFIGURATION & STATE ====================
-const APP_CONFIG = {
-    supabaseUrl: 'https://sbaslcgmbwfnqbwtzsil.supabase.co',
-    vercelUrl: 'https://hr-support-hub.vercel.app', 
-    botApiUrl: 'https://hr-chatbot-production.up.railway.app/chat'
-};
+const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
+const vercelUrl = 'https://hr-support-hub.vercel.app'; // Your live frontend URL
 
 let currentTicketId = null;
 let employeeId = null;
 let employeeName = '';
+let botApiUrl = 'https://hr-chatbot-production.up.railway.app/chat';
 let botActive = true;
-let typingIndicatorId = 'bot-typing-indicator';
+let loadingTimeout = null;
 
-// ==================== UTILITY FUNCTIONS ====================
+// Helper to escape HTML
 function escapeHTML(str) {
     if (!str) return '';
-    return String(str).replace(/[&<>"]/g, function(m) {
+    return str.replace(/[&<>\"]/g, function(m) {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
-        if (m === '"') return '&quot;';
+        if (m === '\"') return '&quot;';
         return m;
     });
 }
 
+// Format bot messages (convert markdown-like syntax to HTML)
 function formatBotMessage(text) {
     if (!text) return text;
+    // Bold
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Lists
     const lines = text.split('\n');
     let inList = false;
     let html = '';
     for (let line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
-            if (!inList) { html += '<ul>'; inList = true; }
+            if (!inList) {
+                html += '<ul>';
+                inList = true;
+            }
             html += '<li>' + trimmed.substring(2) + '</li>';
         } else {
-            if (inList) { html += '</ul>'; inList = false; }
+            if (inList) {
+                html += '</ul>';
+                inList = false;
+            }
             html += trimmed ? `<p>${trimmed}</p>` : '<br>';
         }
     }
@@ -45,41 +50,18 @@ function formatBotMessage(text) {
     return html;
 }
 
-// ==================== UI HELPERS (TYPING INDICATOR) ====================
-function showTypingIndicator() {
-    if (document.getElementById(typingIndicatorId)) return;
-    
-    const messagesDiv = document.getElementById('messages');
-    if (!messagesDiv) return;
-    
-    const indicatorDiv = document.createElement('div');
-    indicatorDiv.id = typingIndicatorId;
-    indicatorDiv.className = 'message bot typing-indicator';
-    indicatorDiv.innerHTML = `<span></span><span></span><span></span>`;
-    
-    messagesDiv.appendChild(indicatorDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-function removeTypingIndicator() {
-    const indicator = document.getElementById(typingIndicatorId);
-    if (indicator) {
-        indicator.remove();
-    }
-}
-
-// ==================== CHAT LOGIC ====================
 function displayMessage(msg) {
-    removeTypingIndicator(); 
-    
     const messagesDiv = document.getElementById('messages');
-    if (!messagesDiv) return;
-    
     const div = document.createElement('div');
     div.className = `message ${msg.sender_type}`;
     
-    let contentHtml = msg.sender_type === 'bot' ? formatBotMessage(msg.content) : escapeHTML(msg.content);
-    
+    let contentHtml = '';
+    if (msg.sender_type === 'bot') {
+        contentHtml = formatBotMessage(msg.content);
+    } else {
+        contentHtml = escapeHTML(msg.content);
+    }
+
     let senderName = '';
     if (msg.sender_type === 'employee') senderName = 'You';
     else if (msg.sender_type === 'hr') senderName = 'HR Support';
@@ -91,128 +73,89 @@ function displayMessage(msg) {
 }
 
 async function loadMessages() {
-    try {
-        const { data: messages, error } = await supabaseClient
-            .from('messages')
-            .select('*')
-            .eq('ticket_id', currentTicketId)
-            .order('created_at', { ascending: true });
+    const { data: messages, error } = await supabaseClient
+        .from('messages')
+        .select('*')
+        .eq('ticket_id', currentTicketId)
+        .order('created_at', { ascending: true });
 
-        if (error) throw error;
-        
-        const messagesDiv = document.getElementById('messages');
-        if (messagesDiv) {
-            messagesDiv.innerHTML = '';
-            messages.forEach(displayMessage);
-        }
-    } catch (err) {
-        console.error('Error loading messages:', err);
-        const messagesDiv = document.getElementById('messages');
-        if (messagesDiv) {
-            messagesDiv.innerHTML = '<div style="text-align:center; color:#b71c1c; padding:20px;">Error loading conversation history.</div>';
-        }
+    if (error) {
+        console.error('Error loading messages:', error);
+        return;
     }
+    document.getElementById('messages').innerHTML = '';
+    messages.forEach(displayMessage);
 }
 
 async function sendMessage() {
     const input = document.getElementById('message-input');
-    const btn = document.getElementById('send-btn');
-    if (!input || !btn) return;
-    
     const text = input.value.trim();
     if (!text) return;
 
     input.value = '';
-    input.disabled = true;
-    btn.disabled = true;
+    
+    // 1. Save to Supabase (Employee Message)
+    const { error: dbError } = await supabaseClient
+        .from('messages')
+        .insert({
+            ticket_id: currentTicketId,
+            sender_type: 'employee',
+            content: text
+        });
 
-    try {
-        const { error: dbError } = await supabaseClient
-            .from('messages')
-            .insert({
-                ticket_id: currentTicketId,
-                sender_type: 'employee',
-                content: text
+    if (dbError) {
+        console.error('Error saving message:', dbError);
+        return;
+    }
+
+    // 2. If bot is active, call Railway API
+    if (botActive) {
+        // Show loading indicator
+        const messagesDiv = document.getElementById('messages');
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'bot-loading';
+        loadingDiv.className = 'message bot';
+        loadingDiv.innerHTML = '<div class="sender-name">AI Assistant</div><div class="typing-indicator"><span></span><span></span><span></span></div>';
+        messagesDiv.appendChild(loadingDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+        try {
+            const response = await fetch(botApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: text,
+                    ticket_id: currentTicketId
+                })
             });
-
-        if (dbError) throw dbError;
-
-        if (botActive) {
-            showTypingIndicator();
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-            try {
-                const response = await fetch(APP_CONFIG.botApiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question: text, ticket_id: currentTicketId }),
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) throw new Error(`Bot API returned ${response.status}`);
-            } catch (botErr) {
-                console.error("Bot API Error:", botErr);
-                removeTypingIndicator();
-                
-                if (botErr.name === 'AbortError') {
-                    displayMessage({
-                        sender_type: 'bot',
-                        content: 'I am experiencing a slight delay connecting to the knowledge base. Please hold on or escalate to HR if urgent.'
-                    });
-                } else {
-                    displayMessage({
-                        sender_type: 'bot',
-                        content: 'I encountered an error processing your request. Please try asking again or escalate to HR.'
-                    });
-                }
-            }
+            const data = await response.json();
+            // Success response will be handled by the real-time listener if the bot saves to DB,
+            // but your Railway app usually responds directly or saves to DB. 
+            // If it saves to DB, the listener below handles display.
+        } catch (err) {
+            console.error('Bot API Error:', err);
+            if (document.getElementById('bot-loading')) document.getElementById('bot-loading').remove();
         }
-    } catch (err) {
-        console.error('Error sending message:', err);
-        alert('Could not send message: ' + err.message);
-    } finally {
-        input.disabled = false;
-        btn.disabled = false;
-        input.focus();
     }
 }
 
 async function escalateToHR() {
-    const btn = document.getElementById('escalate-btn');
-    if (!btn) return;
-    
-    const originalText = btn.textContent;
-    btn.textContent = 'Escalating...';
-    btn.disabled = true;
+    const { error } = await supabaseClient
+        .from('tickets')
+        .update({ status: 'escalated', bot_active: false })
+        .eq('id', currentTicketId);
 
-    try {
-        const { error } = await supabaseClient
-            .from('tickets')
-            .update({ status: 'escalated', bot_active: false })
-            .eq('id', currentTicketId);
-
-        if (error) throw error;
-
+    if (error) {
+        alert('Could not escalate: ' + error.message);
+    } else {
         botActive = false;
         displayMessage({
             sender_type: 'bot',
             content: 'Your ticket has been escalated. A human HR representative will be with you shortly.'
         });
-        
-        btn.style.display = 'none'; 
-    } catch (err) {
-        console.error('Error escalating:', err);
-        alert('Could not escalate ticket: ' + err.message);
-        btn.textContent = originalText;
-        btn.disabled = false;
     }
 }
 
-// ==================== INITIALIZATION ====================
 async function init() {
     currentTicketId = sessionStorage.getItem('currentTicketId');
     if (!currentTicketId) {
@@ -220,126 +163,72 @@ async function init() {
         return;
     }
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
         window.location.href = '/';
         return;
     }
 
-    const { data: emp, error: empError } = await supabaseClient
+    const { data: emp } = await supabaseClient
         .from('employees')
         .select('id, full_name')
         .eq('auth_id', user.id)
         .single();
 
-    if (empError || !emp) {
-        alert('Access denied.');
-        window.location.href = '/';
-        return;
-    }
-    
     employeeId = emp.id;
     employeeName = emp.full_name;
 
+    // Load initial ticket state
     const { data: ticket } = await supabaseClient
         .from('tickets')
-        .select('bot_active, status')
+        .select('bot_active')
         .eq('id', currentTicketId)
         .single();
-        
-    if (ticket) {
-        botActive = ticket.bot_active;
-        if (ticket.status === 'closed') {
-            // SAFETY CHECKS: Prevents the "Cannot read properties of null" error
-            const inputArea = document.querySelector('.input-area');
-            if (inputArea) inputArea.style.display = 'none';
-            
-            const escalateBtn = document.getElementById('escalate-btn');
-            if (escalateBtn) escalateBtn.style.display = 'none';
-        } else if (!botActive || ticket.status === 'escalated') {
-            const escalateBtn = document.getElementById('escalate-btn');
-            if (escalateBtn) escalateBtn.style.display = 'none';
-        }
-    }
+    if (ticket) botActive = ticket.bot_active;
 
-    await loadMessages();
+    loadMessages();
 
+    // Listen for new messages
     supabaseClient
-        .channel(`messages-${currentTicketId}`)
-        .on('postgres_changes', {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `ticket_id=eq.${currentTicketId}`
+        .channel(`public:messages:ticket_id=eq.${currentTicketId}`)
+        .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'messages', 
+            filter: `ticket_id=eq.${currentTicketId}` 
         }, (payload) => {
+            if (document.getElementById('bot-loading')) document.getElementById('bot-loading').remove();
             displayMessage(payload.new);
         })
         .subscribe();
 
     supabaseClient
-        .channel(`ticket-${currentTicketId}-status`)
+        .channel(`public:tickets:id=eq.${currentTicketId}`)
         .on('postgres_changes', {
             event: 'UPDATE',
             schema: 'public',
             table: 'tickets',
             filter: `id=eq.${currentTicketId}`
         }, (payload) => {
-            const newBotActive = payload.new.bot_active;
-            const newStatus = payload.new.status;
-            
-            if (botActive && !newBotActive) {
-                displayMessage({
-                    sender_type: 'bot',
-                    content: 'HR has joined the conversation. They will respond to you directly.'
-                });
-                const escalateBtn = document.getElementById('escalate-btn');
-                if (escalateBtn) escalateBtn.style.display = 'none';
-            }
-            
-            if (newStatus === 'closed') {
-                const inputArea = document.querySelector('.input-area');
-                if (inputArea) inputArea.style.display = 'none';
-                
-                const escalateBtn = document.getElementById('escalate-btn');
-                if (escalateBtn) escalateBtn.style.display = 'none';
-                
-                displayMessage({
-                    sender_type: 'bot',
-                    content: 'This ticket has been marked as resolved.'
-                });
-            }
-            
-            botActive = newBotActive;
+            botActive = payload.new.bot_active;
         })
         .subscribe();
 
-    const backBtn = document.getElementById('back-btn');
-    if (backBtn) {
-        backBtn.addEventListener('click', () => {
-            window.location.href = '/employee/tickets.html';
-        });
-    }
+    document.getElementById('back-btn').addEventListener('click', () => {
+        window.location.href = '/employee/tickets.html';
+    });
 
-    const sendBtn = document.getElementById('send-btn');
-    if (sendBtn) sendBtn.addEventListener('click', sendMessage);
-    
-    const messageInput = document.getElementById('message-input');
-    if (messageInput) {
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
-        });
-    }
+    document.getElementById('send-btn').addEventListener('click', sendMessage);
+    document.getElementById('message-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
 
-    const escalateBtn = document.getElementById('escalate-btn');
-    if (escalateBtn) escalateBtn.addEventListener('click', escalateToHR);
+    document.getElementById('escalate-btn').addEventListener('click', escalateToHR);
 
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', async () => {
-            await supabaseClient.auth.signOut();
-            window.location.href = '/';
-        });
-    }
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+        await supabaseClient.auth.signOut();
+        window.location.href = '/';
+    });
 }
 
 init();
