@@ -132,6 +132,19 @@ body {
     background: #cbd5e1;
 }
 
+/* Filter button active states */
+.chart-filter-btn.active,
+.analytics-filter-btn.active {
+    background: #0f5b8c;
+    color: white;
+    border-color: #0f5b8c;
+}
+
+.chart-filter-btn.active:hover,
+.analytics-filter-btn.active:hover {
+    background: #0a3f62;
+}
+
 #messages {
     flex: 1;
     overflow-y: auto;
