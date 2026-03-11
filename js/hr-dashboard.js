@@ -852,32 +852,54 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
 
     try {
         // Determine date range based on filter
-        const now = new Date();
-        let start, end;
-        if (startDate && endDate) {
-            start = startDate;
-            end = endDate;
-        } else {
-            switch (filter) {
-                case 'day':
-                    start = new Date(now.setHours(0,0,0,0)).toISOString().split('T')[0];
-                    end = new Date(now.setHours(23,59,59,999)).toISOString().split('T')[0];
-                    break;
-                case 'week':
-                    const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
-                    start = new Date(firstDay.setHours(0,0,0,0)).toISOString().split('T')[0];
-                    end = new Date().toISOString().split('T')[0];
-                    break;
-                case 'month':
-                    start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-                    end = new Date().toISOString().split('T')[0];
-                    break;
-                case 'all':
-                default:
-                    start = null;
-                    end = null;
-            }
+        // Determine date range based on filter
+const now = new Date();
+let start, end;
+
+if (startDate && endDate) {
+    // Custom range: use as-is (already full ISO strings)
+    start = startDate;
+    end = endDate;
+} else {
+    switch (filter) {
+        case 'day':
+            // Full day from midnight to midnight (local, then convert to UTC)
+            start = new Date(now.setHours(0,0,0,0)).toISOString();
+            end = new Date(now.setHours(23,59,59,999)).toISOString();
+            break;
+
+        case 'week': {
+            // Start of current week (Sunday 00:00 local)
+            const firstDay = new Date(now);
+            firstDay.setDate(now.getDate() - now.getDay());
+            firstDay.setHours(0,0,0,0);
+            start = firstDay.toISOString();
+            // End of today (23:59:59.999 local)
+            const endToday = new Date(now);
+            endToday.setHours(23,59,59,999);
+            end = endToday.toISOString();
+            break;
         }
+
+        case 'month': {
+            // First day of month at 00:00 local
+            const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            firstOfMonth.setHours(0,0,0,0);
+            start = firstOfMonth.toISOString();
+            // End of today (23:59:59.999 local)
+            const endToday = new Date(now);
+            endToday.setHours(23,59,59,999);
+            end = endToday.toISOString();
+            break;
+        }
+
+        case 'all':
+        default:
+            start = null;
+            end = null;
+            break;
+    }
+}
 
         // Build base query
         let query = supabaseClient.from('tickets').select('*');
