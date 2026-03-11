@@ -1,28 +1,11 @@
 // hr-dashboard.js
-
-// ==================== GLOBAL CONFIGURATION & STATE ====================
-const APP_CONFIG = {
-    supabaseUrl: 'https://sbaslcgmbwfnqbwtzsil.supabase.co',
-    vercelUrl: 'https://hr-support-hub.vercel.app', 
-    hrNotificationEmail: 'jcjj.1104@gmail.com' // Testing email for Resend
-};
-
+// ==================== GLOBAL VARIABLES ====================
 let currentFilter = 'open';
 let currentHrId = null;
 let currentHrName = '';
-let currentHrIdForDocs = null;
 
-// Pagination State
-let currentCasePage = 0;
-let currentEmpPage = 0;
-const ITEMS_PER_PAGE = 25;
-
-// Chart State
-let currentChartFilter = 'week'; 
-let currentAnalyticsFilter = 'month'; 
-let categoryChart, ratingChart;
-let ticketsByStatusChart, responseTimeChart, heatmapChart;
-let dashboardTicketsChart, dashboardCategoryChart;
+const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
+const vercelUrl = 'https://hr-support-hub.vercel.app';
 
 // ==================== TOAST NOTIFICATION ====================
 function showToast(message, type = 'info') {
@@ -50,123 +33,16 @@ function formatDate(dateStr) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function setButtonLoading(button, isLoading, loadingText = 'Processing...') {
-    if (isLoading) {
-        button.dataset.originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = loadingText;
-        button.style.opacity = '0.7';
-        button.style.cursor = 'wait';
-    } else {
-        button.disabled = false;
-        button.textContent = button.dataset.originalText;
-        button.style.opacity = '1';
-        button.style.cursor = 'pointer';
-    }
-}
-
-// ==================== PAGINATION HELPER ====================
-function buildPaginationControls(totalCount, tableSelector, functionName, currentPage) {
-    let paginationDiv = document.querySelector(`${tableSelector}-pagination`);
-    if (paginationDiv) paginationDiv.remove();
-
-    const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
-    if (totalPages <= 1) return; // Hide controls if everything fits on one page
-
-    paginationDiv = document.createElement('div');
-    paginationDiv.id = `${tableSelector.replace('#', '')}-pagination`;
-    paginationDiv.style = "display: flex; justify-content: space-between; align-items: center; padding: 15px 24px; background: white; border-top: 1px solid var(--border-color);";
-    
-    const prevDisabled = currentPage === 0 ? 'disabled' : '';
-    const nextDisabled = currentPage >= totalPages - 1 ? 'disabled' : '';
-
-    paginationDiv.innerHTML = `
-        <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 500;">
-            Showing ${currentPage * ITEMS_PER_PAGE + 1} to ${Math.min((currentPage + 1) * ITEMS_PER_PAGE, totalCount)} of ${totalCount} records
-        </span>
-        <div style="display: flex; gap: 10px;">
-            <button class="btn btn-outline" ${prevDisabled} onclick="${functionName}(${currentPage - 1})">Previous</button>
-            <button class="btn btn-outline" ${nextDisabled} onclick="${functionName}(${currentPage + 1})">Next</button>
-        </div>
-    `;
-
-    document.querySelector(tableSelector).parentNode.appendChild(paginationDiv);
-}
-
-// ==================== NOTIFICATION FUNCTIONS ====================
-async function loadNotificationItems() {
-    try {
-        const { data: openTickets, error: ticketError } = await supabaseClient
-            .from('tickets')
-            .select('id, issue_summary, employees(full_name)')
-            .eq('status', 'open')
-            .order('created_at', { ascending: false })
-            .limit(5);
-
-        const { data: pendingTasks, error: taskError } = await supabaseClient
-            .from('tasks')
-            .select('id, title')
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false })
-            .limit(5);
-
-        const dropdown = document.getElementById('notif-dropdown');
-        let html = '<div class="dropdown-header">Notifications</div>';
-
-        if (openTickets?.length) {
-            html += '<div style="padding: 8px 15px; background: #f0f9ff; font-weight: 600;">Open Tickets</div>';
-            openTickets.forEach(t => {
-                html += `
-                    <a href="/hr/ticket.html" class="dropdown-item" onclick="sessionStorage.setItem('currentTicketId', '${t.id}'); return true;">
-                        🎫 ${t.issue_summary?.substring(0,30) || 'Ticket'} - ${t.employees?.full_name || 'Unknown'}
-                    </a>
-                `;
-            });
-        }
-
-        if (pendingTasks?.length) {
-            html += '<div style="padding: 8px 15px; background: #f0f9ff; font-weight: 600;">Pending Tasks</div>';
-            pendingTasks.forEach(t => {
-                html += `
-                    <a href="/hr/tasks.html" class="dropdown-item" onclick="navigate('view-tasks'); return false;">
-                        ✅ ${t.title}
-                    </a>
-                `;
-            });
-        }
-
-        if (!openTickets?.length && !pendingTasks?.length) {
-            html += '<div class="dropdown-item">No new notifications</div>';
-        }
-
-        dropdown.innerHTML = html;
-    } catch (err) {
-        console.error('Error loading notifications:', err);
-    }
-}
-
+// ==================== NOTIFICATION BADGE ====================
 async function updateNotificationCount() {
-    try {
-        const { count: openCount, error: ticketError } = await supabaseClient
-            .from('tickets')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'open');
-
-        const { count: taskCount, error: taskError } = await supabaseClient
-            .from('tasks')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'pending');
-
-        if (ticketError || taskError) throw new Error('Count error');
-
-        const total = (openCount || 0) + (taskCount || 0);
+    const { count, error } = await supabaseClient
+        .from('tickets')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['open', 'escalated']);
+    if (!error) {
         const badge = document.getElementById('notif-badge');
-        badge.textContent = total;
-        badge.style.display = total > 0 ? 'flex' : 'none';
-
-        loadNotificationItems();
-    } catch (err) {
-        console.error('Error updating notification count:', err);
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'flex' : 'none';
     }
 }
 
@@ -273,7 +149,7 @@ async function loadRecentCases() {
 // ==================== DASHBOARD TASKS ====================
 async function loadTasks() {
     const list = document.getElementById('dashboard-task-list');
-    list.innerHTML = '<li class="task-item">Loading...</li>';
+    list.innerHTML = '';
 
     const { data: tasks, error } = await supabaseClient
         .from('tasks')
@@ -293,149 +169,131 @@ async function loadTasks() {
         return;
     }
 
-    list.innerHTML = '';
     tasks.forEach(task => {
         const li = document.createElement('li');
         li.className = 'task-item';
         li.innerHTML = `
             <div class="task-details"><h4>${escapeHTML(task.title)}</h4><p>${escapeHTML(task.description || '')}</p></div>
-            <button class="btn btn-outline btn-complete" onclick="completeTask('${task.id}', this)">Complete</button>
+            <button class="btn btn-outline" onclick="completeTask('${task.id}', this)">Complete</button>
         `;
         list.appendChild(li);
     });
 }
 
-// ==================== EMPLOYEE DIRECTORY (PAGINATED) ====================
-async function loadEmployeeDirectory(page = 0) {
-    currentEmpPage = page;
+// ==================== EMPLOYEE DIRECTORY ====================
+async function loadEmployeeDirectory() {
     const tbody = document.querySelector('#emp-table tbody');
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading records...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
 
-    const from = page * ITEMS_PER_PAGE;
-    const to = from + ITEMS_PER_PAGE - 1;
+    const { data: employees, error } = await supabaseClient
+        .from('employees')
+        .select('*')
+        .order('full_name');
 
-    try {
-        const { data: employees, error, count } = await supabaseClient
-            .from('employees')
-            .select('*', { count: 'exact' })
-            .order('full_name')
-            .range(from, to);
-
-        if (error) throw error;
-
-        if (!employees.length) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No employees found</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = '';
-        employees.forEach(emp => {
-            const tr = document.createElement('tr');
-            tr.className = 'clickable-row';
-            tr.setAttribute('data-emp-id', emp.id);
-            tr.setAttribute('data-emp-name', emp.full_name);
-            tr.setAttribute('data-emp-email', emp.email);
-            tr.setAttribute('data-emp-position', emp.position || '');
-            tr.onclick = () => viewEmployeeProfile(emp.id, emp.full_name, emp.email, emp.position);
-            tr.innerHTML = `
-                <td>${emp.id.substr(0,8)}</td>
-                <td>${escapeHTML(emp.full_name)}</td>
-                <td>${escapeHTML(emp.email || '')}</td>
-                <td>${escapeHTML(emp.position || '')}</td>
-                <td>${escapeHTML(emp.department || '')}</td>
-                <td>${emp.start_date ? formatDate(emp.start_date) : ''}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        buildPaginationControls(count, '#emp-table', 'loadEmployeeDirectory', currentEmpPage);
-    } catch (err) {
-        console.error('Error loading directory:', err);
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--danger-red);">Error loading employees</td></tr>';
+    if (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="6">Error loading employees</td></tr>';
+        return;
     }
+
+    tbody.innerHTML = '';
+    employees.forEach(emp => {
+        const tr = document.createElement('tr');
+        tr.className = 'clickable-row';
+        tr.setAttribute('data-emp-id', emp.id);
+        tr.setAttribute('data-emp-name', emp.full_name);
+        tr.setAttribute('data-emp-email', emp.email);
+        tr.setAttribute('data-emp-position', emp.position || '');
+        tr.onclick = () => viewEmployeeProfile(emp.id, emp.full_name, emp.email, emp.position);
+        tr.innerHTML = `
+            <td>${emp.id.substr(0,8)}</td>
+            <td>${escapeHTML(emp.full_name)}</td>
+            <td>${escapeHTML(emp.email || '')}</td>
+            <td>${escapeHTML(emp.position || '')}</td>
+            <td>${escapeHTML(emp.department || '')}</td>
+            <td>${emp.start_date ? formatDate(emp.start_date) : ''}</td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
-// ==================== FULL CASES TABLE (PAGINATED) ====================
-async function loadCasesTable(page = 0) {
-    currentCasePage = page;
+// ==================== FULL CASES TABLE ====================
+async function loadCasesTable() {
     const tbody = document.querySelector('#cases-table tbody');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading records...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
 
-    const from = page * ITEMS_PER_PAGE;
-    const to = from + ITEMS_PER_PAGE - 1;
+    const { data: tickets, error } = await supabaseClient
+        .from('tickets')
+        .select(`
+            *,
+            employees (full_name),
+            assigned_to_hr:hr_staff!tickets_assigned_to_fkey (display_name)
+        `)
+        .order('created_at', { ascending: false });
 
-    try {
-        const { data: tickets, error, count } = await supabaseClient
-            .from('tickets')
-            .select(`
-                *,
-                employees (full_name),
-                assigned_to_hr:hr_staff!tickets_assigned_to_fkey (display_name)
-            `, { count: 'exact' })
-            .order('created_at', { ascending: false })
-            .range(from, to);
+    if (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="7">Error loading cases</td></tr>';
+        return;
+    }
 
-        if (error) throw error;
-
-        if (!tickets.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No cases found</td></tr>';
-            return;
+    tbody.innerHTML = '';
+    for (const ticket of tickets) {
+        const tr = document.createElement('tr');
+        let statusClass = 'status-open';
+        let statusText = 'Open';
+        if (ticket.status === 'inprogress') {
+            statusClass = 'status-inprogress';
+            statusText = 'In Progress';
+        } else if (ticket.status === 'closed') {
+            statusClass = 'status-resolved';
+            statusText = 'Resolved';
+        } else if (ticket.status === 'escalated') {
+            statusClass = 'status-escalated';
+            statusText = 'Escalated';
         }
 
-        tbody.innerHTML = '';
-        for (const ticket of tickets) {
-            const tr = document.createElement('tr');
-            let statusClass = 'status-open';
-            let statusText = 'Open';
-            if (ticket.status === 'inprogress') { statusClass = 'status-inprogress'; statusText = 'In Progress'; } 
-            else if (ticket.status === 'closed') { statusClass = 'status-resolved'; statusText = 'Resolved'; } 
-            else if (ticket.status === 'escalated') { statusClass = 'status-escalated'; statusText = 'Escalated'; }
+        const assignBtn = ticket.assigned_to
+            ? `<button class="btn btn-unassign" data-ticket-id="${ticket.id}" onclick="unassignTicket(this)">Unassign (${ticket.assigned_to_hr?.display_name || 'Me'})</button>`
+            : `<button class="btn btn-assign" data-ticket-id="${ticket.id}" onclick="assignTicket(this)">Assign to Me</button>`;
 
-            const assignBtn = ticket.assigned_to
-                ? `<button class="btn btn-unassign" data-ticket-id="${ticket.id}" onclick="unassignTicket(this, event)">Unassign (${ticket.assigned_to_hr?.display_name || 'Me'})</button>`
-                : `<button class="btn btn-assign" data-ticket-id="${ticket.id}" onclick="assignTicket(this, event)">Assign to Me</button>`;
+        const { data: hrStaff } = await supabaseClient
+            .from('hr_staff')
+            .select('id, display_name');
+        let reassignOptions = '<option value="">+ Reassign to</option>';
+        hrStaff?.forEach(h => {
+            const selected = ticket.assigned_to === h.id ? 'selected' : '';
+            reassignOptions += `<option value="${h.id}" ${selected}>${escapeHTML(h.display_name)}</option>`;
+        });
 
-            const { data: hrStaff } = await supabaseClient.from('hr_staff').select('id, display_name');
-            let reassignOptions = '<option value="">+ Reassign to</option>';
-            hrStaff?.forEach(h => {
-                const selected = ticket.assigned_to === h.id ? 'selected' : '';
-                reassignOptions += `<option value="${h.id}" ${selected}>${escapeHTML(h.display_name)}</option>`;
-            });
+        tr.innerHTML = `
+            <td>${ticket.id.substr(0,8)}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+            <td>${escapeHTML(ticket.employees?.full_name || 'Unknown')}</td>
+            <td>${escapeHTML(ticket.category || 'Uncategorized')}</td>
+            <td>${formatDate(ticket.created_at)}</td>
+            <td>${assignBtn}</td>
+            <td>
+                <select class="reassign-select" data-ticket-id="${ticket.id}" onchange="updateReassign(this)">
+                    ${reassignOptions}
+                </select>
+            </td>
+        `;
 
-            tr.innerHTML = `
-                <td>${ticket.id.substr(0,8)}</td>
-                <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                <td>${escapeHTML(ticket.employees?.full_name || 'Unknown')}</td>
-                <td>${escapeHTML(ticket.category || 'Uncategorized')}</td>
-                <td>${formatDate(ticket.created_at)}</td>
-                <td>${assignBtn}</td>
-                <td>
-                    <select class="reassign-select" data-ticket-id="${ticket.id}" onchange="updateReassign(this, event)">
-                        ${reassignOptions}
-                    </select>
-                </td>
-            `;
+        tr.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
+            sessionStorage.setItem('currentTicketId', ticket.id);
+            window.location.href = '/hr/ticket.html';
+        });
 
-            tr.addEventListener('click', (e) => {
-                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
-                sessionStorage.setItem('currentTicketId', ticket.id);
-                window.location.href = '/hr/ticket.html';
-            });
-
-            tbody.appendChild(tr);
-        }
-
-        buildPaginationControls(count, '#cases-table', 'loadCasesTable', currentCasePage);
-    } catch (err) {
-        console.error('Error loading cases:', err);
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--danger-red);">Error loading cases</td></tr>';
+        tbody.appendChild(tr);
     }
 }
 
 // ==================== FULL TASKS LIST ====================
 async function loadFullTasks() {
     const list = document.getElementById('main-task-list');
-    list.innerHTML = '<li class="task-item">Loading...</li>';
+    list.innerHTML = '';
 
     const { data: tasks, error } = await supabaseClient
         .from('tasks')
@@ -453,7 +311,6 @@ async function loadFullTasks() {
         return;
     }
 
-    list.innerHTML = '';
     tasks.forEach(task => {
         const li = document.createElement('li');
         li.className = 'task-item';
@@ -469,125 +326,88 @@ async function loadFullTasks() {
     });
 }
 
-// ==================== TICKET ACTIONS (WITH LOADING STATES) ====================
-async function assignTicket(button, event) {
-    if (event) event.stopPropagation();
+// ==================== TICKET ACTIONS ====================
+async function assignTicket(button) {
     const ticketId = button.dataset.ticketId;
     if (!ticketId) return;
 
-    setButtonLoading(button, true, 'Assigning...');
+    const { error } = await supabaseClient
+        .from('tickets')
+        .update({ assigned_to: currentHrId, status: 'inprogress' })
+        .eq('id', ticketId);
 
-    try {
-        const { error } = await supabaseClient
-            .from('tickets')
-            .update({ assigned_to: currentHrId, status: 'inprogress' })
-            .eq('id', ticketId);
-
-        if (error) throw error;
-
+    if (error) {
+        console.error('Error assigning ticket:', error);
+        showToast('Error assigning ticket: ' + error.message, 'error');
+    } else {
         showToast('Ticket assigned to you', 'success');
-        loadCasesTable(currentCasePage);
+        loadCasesTable();
         loadRecentCases();
         updateNotificationCount();
-    } catch (err) {
-        console.error('Error assigning ticket:', err);
-        showToast('Error assigning ticket: ' + err.message, 'error');
-        setButtonLoading(button, false);
     }
 }
 
-async function unassignTicket(button, event) {
-    if (event) event.stopPropagation();
+async function unassignTicket(button) {
     const ticketId = button.dataset.ticketId;
     if (!ticketId) return;
 
-    setButtonLoading(button, true, 'Updating...');
+    const { error } = await supabaseClient
+        .from('tickets')
+        .update({ assigned_to: null, status: 'open' })
+        .eq('id', ticketId);
 
-    try {
-        const { error } = await supabaseClient
-            .from('tickets')
-            .update({ assigned_to: null, status: 'open' })
-            .eq('id', ticketId);
-
-        if (error) throw error;
-
+    if (error) {
+        showToast('Error unassigning ticket: ' + error.message, 'error');
+    } else {
         showToast('Ticket unassigned', 'success');
-        loadCasesTable(currentCasePage);
+        loadCasesTable();
         loadRecentCases();
         updateNotificationCount();
-    } catch (err) {
-        console.error('Error unassigning ticket:', err);
-        showToast('Error unassigning ticket: ' + err.message, 'error');
-        setButtonLoading(button, false);
     }
 }
 
-async function updateReassign(select, event) {
-    if (event) event.stopPropagation();
+async function updateReassign(select) {
     const ticketId = select.dataset.ticketId;
     const hrId = select.value || null;
-    select.disabled = true;
-
-    try {
-        const { error } = await supabaseClient
-            .from('tickets')
-            .update({ assigned_to: hrId })
-            .eq('id', ticketId);
-            
-        if (error) throw error;
-
+    const { error } = await supabaseClient
+        .from('tickets')
+        .update({ assigned_to: hrId })
+        .eq('id', ticketId);
+    if (error) {
+        showToast('Error reassigning: ' + error.message, 'error');
+    } else {
         showToast('Ticket reassigned', 'success');
-        loadCasesTable(currentCasePage);
-    } catch (err) {
-        console.error('Error reassigning:', err);
-        showToast('Error reassigning: ' + err.message, 'error');
-        select.disabled = false;
+        loadCasesTable();
     }
 }
 
 async function completeTask(taskId, button) {
-    setButtonLoading(button, true, 'Saving...');
-
-    try {
-        const { error } = await supabaseClient
-            .from('tasks')
-            .update({ status: 'completed' })
-            .eq('id', taskId);
-            
-        if (error) throw error;
-
+    const { error } = await supabaseClient
+        .from('tasks')
+        .update({ status: 'completed' })
+        .eq('id', taskId);
+    if (error) {
+        showToast('Error completing task: ' + error.message, 'error');
+    } else {
         const li = button.closest('.task-item');
         li.classList.add('completed');
         button.textContent = 'Completed';
         showToast('Task completed', 'success');
         updateNotificationCount();
-    } catch (err) {
-        console.error('Error completing task:', err);
-        showToast('Error completing task: ' + err.message, 'error');
-        setButtonLoading(button, false);
     }
 }
 
 async function deleteTask(taskId, button) {
-    if (!confirm('Are you sure you want to delete this task?')) return;
-    
-    setButtonLoading(button, true, 'Deleting...');
-
-    try {
-        const { error } = await supabaseClient
-            .from('tasks')
-            .delete()
-            .eq('id', taskId);
-            
-        if (error) throw error;
-
+    if (!confirm('Delete this task?')) return;
+    const { error } = await supabaseClient
+        .from('tasks')
+        .delete()
+        .eq('id', taskId);
+    if (error) {
+        showToast('Error deleting task: ' + error.message, 'error');
+    } else {
         button.closest('.task-item').remove();
         showToast('Task deleted', 'success');
-        updateNotificationCount();
-    } catch (err) {
-        console.error('Error deleting task:', err);
-        showToast('Error deleting task: ' + err.message, 'error');
-        setButtonLoading(button, false);
     }
 }
 
@@ -647,10 +467,10 @@ function navigate(viewId) {
         loadDashboardCharts();   // Load charts with current filter
         updateNotificationCount();
     } else if (viewId === 'view-employees') {
-        loadEmployeeDirectory(currentEmpPage);
+        loadEmployeeDirectory();
         updateNotificationCount();
     } else if (viewId === 'view-cases') {
-        loadCasesTable(currentCasePage);
+        loadCasesTable();
         updateNotificationCount();
     } else if (viewId === 'view-tasks') {
         loadFullTasks();
@@ -661,7 +481,7 @@ function navigate(viewId) {
     }
 }
 
-// ==================== CREATE TICKET / TASK MODALS ====================
+// ==================== CREATE TICKET MODAL ====================
 async function populateEmployeeList() {
     const { data: employees } = await supabaseClient
         .from('employees')
@@ -679,9 +499,6 @@ async function populateEmployeeList() {
 
 async function submitNewTicket(e) {
     e.preventDefault();
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    setButtonLoading(submitBtn, true, 'Creating...');
-
     const empName = document.getElementById('new-ticket-emp').value;
     const summary = document.getElementById('new-ticket-summary').value;
     const status = document.getElementById('new-ticket-status').value;
@@ -696,7 +513,6 @@ async function submitNewTicket(e) {
     }
     if (!empId) {
         alert('Please select a valid employee from the list.');
-        setButtonLoading(submitBtn, false);
         return;
     }
 
@@ -704,84 +520,80 @@ async function submitNewTicket(e) {
     const assignedTo = status === 'In Progress' ? currentHrId : null;
     const category = typeof classifyIssue === 'function' ? classifyIssue(summary) : 'general';
 
-    try {
-        const { data: newTicket, error } = await supabaseClient
-            .from('tickets')
-            .insert({
-                employee_id: empId,
-                issue_summary: summary,
-                category: category,
-                status: ticketStatus,
-                assigned_to: assignedTo
-            })
-            .select()
-            .single();
+    const { data: newTicket, error } = await supabaseClient
+        .from('tickets')
+        .insert({
+            employee_id: empId,
+            issue_summary: summary,
+            category: category,
+            status: ticketStatus,
+            assigned_to: assignedTo
+        })
+        .select()
+        .single();
 
-        if (error) throw error;
-
+    if (error) {
+        alert('Error creating ticket: ' + error.message);
+    } else {
         closeModal('create-ticket-modal');
         showToast('Ticket created', 'success');
         updateNotificationCount();
 
-        // Notify HR via Edge Function
-        const ticketLink = `${APP_CONFIG.vercelUrl}/hr/ticket.html?id=${newTicket.id}`;
+        // Notify HR
+        const hrEmail = 'jcjj.1104@gmail.com'; // Replace with actual HR email
+        const ticketLink = `${vercelUrl}/hr/ticket.html?id=${newTicket.id}`;
         const emailPayload = {
-            to: APP_CONFIG.hrNotificationEmail,
+            to: hrEmail,
             subject: `New ticket created on behalf of ${empName}`,
             html: `<p>A new ticket has been created by HR:</p>
                    <p><strong>Employee:</strong> ${empName}</p>
                    <p><strong>Issue:</strong> ${summary}</p>
                    <p><a href="${ticketLink}">View Ticket</a></p>`
         };
-        
-        fetch(`${APP_CONFIG.supabaseUrl}/functions/v1/send-email`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(emailPayload)
-        }).catch(err => console.error('Error sending HR notification:', err));
+        try {
+            await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(emailPayload)
+            });
+        } catch (err) {
+            console.error('Error sending HR notification:', err);
+        }
 
         if (!document.getElementById('view-cases').classList.contains('hidden')) {
-            loadCasesTable(currentCasePage);
+            loadCasesTable();
         }
         if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
             loadRecentCases();
         }
-    } catch (err) {
-        alert('Error creating ticket: ' + err.message);
-    } finally {
-        setButtonLoading(submitBtn, false);
     }
 }
 
 async function submitNewTask(e) {
     e.preventDefault();
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    setButtonLoading(submitBtn, true, 'Creating...');
-
     const title = document.getElementById('new-task-title').value;
     const desc = document.getElementById('new-task-desc').value;
 
-    try {
-        const { error } = await supabaseClient
-            .from('tasks')
-            .insert({
-                title,
-                description: desc,
-                status: 'pending',
-                assigned_to: currentHrId
-            });
+    const { error } = await supabaseClient
+        .from('tasks')
+        .insert({
+            title,
+            description: desc,
+            status: 'pending',
+            assigned_to: currentHrId
+        });
 
-        if (error) throw error;
-
+    if (error) {
+        alert('Error creating task: ' + error.message);
+    } else {
         closeModal('create-task-modal');
         showToast('Task created', 'success');
-        if (!document.getElementById('view-tasks').classList.contains('hidden')) loadFullTasks();
-        if (!document.getElementById('view-dashboard').classList.contains('hidden')) loadTasks();
-        
-    } catch (err) {
-        alert('Error creating task: ' + err.message);
-    } finally {
-        setButtonLoading(submitBtn, false);
+        if (!document.getElementById('view-tasks').classList.contains('hidden')) {
+            loadFullTasks();
+        }
+        if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+            loadTasks();
+        }
     }
 }
 
@@ -859,7 +671,6 @@ function filterEmployees() {
     const rows = document.querySelectorAll('#emp-table tbody tr');
 
     rows.forEach(row => {
-        if (row.cells.length < 2) return; // skip loading row
         const name = row.cells[1].textContent.toLowerCase();
         const position = row.cells[3].textContent;
         const matchesSearch = name.includes(searchTerm);
@@ -874,7 +685,6 @@ function filterCases() {
     const rows = document.querySelectorAll('#cases-table tbody tr');
 
     rows.forEach(row => {
-        if (row.cells.length < 2) return; // skip loading row
         const status = row.cells[1].textContent.trim();
         const assigneeCell = row.cells[5].textContent.trim();
         
@@ -918,9 +728,6 @@ function sortTable(tableId, colIndex, isNumeric = false) {
     const table = document.getElementById(tableId);
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    if (rows.length > 0 && rows[0].cells.length === 1) return; // guard against empty loading row
-
     const dir = table.dataset.sortDir === 'asc' ? 'desc' : 'asc';
     table.dataset.sortDir = dir;
 
@@ -959,11 +766,15 @@ async function addEmployee() {
         showToast('Error adding employee: ' + error.message, 'error');
     } else {
         showToast('Employee added', 'success');
-        loadEmployeeDirectory(currentEmpPage);
+        loadEmployeeDirectory();
     }
 }
 
 // ==================== ENHANCED ANALYTICS FUNCTIONS ====================
+let categoryChart, ratingChart;
+let ticketsByStatusChart, responseTimeChart, heatmapChart;
+let currentAnalyticsFilter = 'month'; // default
+
 /**
  * Enhanced analytics loader – loads all charts for a given date filter.
  * @param {string} filter - 'day', 'week', 'month', 'all'
@@ -1141,6 +952,7 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
                 }
             });
         } else if (responseDays.length === 0) {
+            // Optionally display a message on the canvas
             const canvas = document.getElementById('responseTimeChart');
             if (canvas) {
                 const ctx = canvas.getContext('2d');
@@ -1313,6 +1125,8 @@ function exportAnalyticsCSV() {
 }
 
 // ==================== MEETING DOCUMENTS ====================
+let currentHrIdForDocs = null;
+
 async function loadMeetingDocs() {
     const listDiv = document.getElementById('docs-list');
     listDiv.innerHTML = '<p>Loading...</p>';
@@ -1537,11 +1351,95 @@ async function processCSVUpload() {
     }
     closeModal('import-csv-modal');
     if (!document.getElementById('view-employees').classList.contains('hidden')) {
-        loadEmployeeDirectory(currentEmpPage);
+        loadEmployeeDirectory();
     }
 }
 
-// ==================== DASHBOARD CHARTS ====================
+// ==================== NOTIFICATION FUNCTIONS ====================
+async function loadNotificationItems() {
+    try {
+        const { data: openTickets, error: ticketError } = await supabaseClient
+            .from('tickets')
+            .select('id, issue_summary, employees(full_name)')
+            .eq('status', 'open')
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        const { data: pendingTasks, error: taskError } = await supabaseClient
+            .from('tasks')
+            .select('id, title')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        const dropdown = document.getElementById('notif-dropdown');
+        let html = '<div class="dropdown-header">Notifications</div>';
+
+        if (openTickets?.length) {
+            html += '<div style="padding: 8px 15px; background: #f0f9ff; font-weight: 600;">Open Tickets</div>';
+            openTickets.forEach(t => {
+                html += `
+                    <a href="/hr/ticket.html" class="dropdown-item" onclick="sessionStorage.setItem('currentTicketId', '${t.id}'); return true;">
+                        🎫 ${t.issue_summary?.substring(0,30) || 'Ticket'} - ${t.employees?.full_name || 'Unknown'}
+                    </a>
+                `;
+            });
+        }
+
+        if (pendingTasks?.length) {
+            html += '<div style="padding: 8px 15px; background: #f0f9ff; font-weight: 600;">Pending Tasks</div>';
+            pendingTasks.forEach(t => {
+                html += `
+                    <a href="/hr/tasks.html" class="dropdown-item" onclick="navigate('view-tasks'); return false;">
+                        ✅ ${t.title}
+                    </a>
+                `;
+            });
+        }
+
+        if (!openTickets?.length && !pendingTasks?.length) {
+            html += '<div class="dropdown-item">No new notifications</div>';
+        }
+
+        dropdown.innerHTML = html;
+    } catch (err) {
+        console.error('Error loading notifications:', err);
+    }
+}
+
+async function updateNotificationCount() {
+    try {
+        const { count: openCount, error: ticketError } = await supabaseClient
+            .from('tickets')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'open');
+
+        const { count: taskCount, error: taskError } = await supabaseClient
+            .from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending');
+
+        if (ticketError || taskError) throw new Error('Count error');
+
+        const total = (openCount || 0) + (taskCount || 0);
+        const badge = document.getElementById('notif-badge');
+        badge.textContent = total;
+        badge.style.display = total > 0 ? 'flex' : 'none';
+
+        loadNotificationItems();
+    } catch (err) {
+        console.error('Error updating notification count:', err);
+    }
+}
+
+// ==================== DASHBOARD CHARTS (ENHANCED WITH BUTTONS) ====================
+let dashboardTicketsChart, dashboardCategoryChart;
+let currentChartFilter = 'week'; // default
+
+/**
+ * Loads dashboard charts with a time filter and appropriate grouping.
+ * Filter options: 'day', 'week', 'month', 'all' (navigate to analytics).
+ */
 async function loadDashboardCharts() {
     const filter = currentChartFilter;
     const now = new Date();
@@ -1563,6 +1461,7 @@ async function loadDashboardCharts() {
             groupBy = 'monthday';
             break;
         default:
+            // 'all' should not call this function; it navigates to analytics
             return;
     }
 
@@ -1583,11 +1482,13 @@ async function loadDashboardCharts() {
         return;
     }
 
+    // Update ticket count
     const countSpan = document.getElementById('tickets-count');
     if (countSpan) {
         countSpan.textContent = `(${tickets.length})`;
     }
 
+    // Group tickets for line chart
     let labels = [];
     let counts = [];
 
@@ -1617,6 +1518,7 @@ async function loadDashboardCharts() {
         counts = monthdayMap;
     }
 
+    // Update line chart
     if (dashboardTicketsChart) dashboardTicketsChart.destroy();
     const ctxTickets = document.getElementById('dashboard-tickets-chart')?.getContext('2d');
     if (ctxTickets) {
@@ -1642,6 +1544,7 @@ async function loadDashboardCharts() {
         });
     }
 
+    // Category breakdown (uses same filtered tickets)
     const categories = {};
     tickets.forEach(t => {
         const cat = t.category || 'Uncategorized';
@@ -1677,6 +1580,7 @@ function openReportScheduler() {
 }
 
 function scheduleReport() {
+    // Placeholder – actual implementation would store schedule in DB and set up Edge Function.
     const name = document.getElementById('report-name').value;
     const emails = document.getElementById('report-emails').value;
     const frequency = document.getElementById('report-frequency').value;
@@ -1684,6 +1588,7 @@ function scheduleReport() {
         alert('Please fill all fields');
         return;
     }
+    // For now, just toast and close.
     showToast(`Report "${name}" scheduled ${frequency} to ${emails}`, 'success');
     closeModal('report-scheduler-modal');
 }
@@ -1707,12 +1612,11 @@ async function init() {
         window.location.href = '/';
         return;
     }
-    
     currentHrId = hr.id;
     currentHrName = hr.display_name;
     currentHrIdForDocs = currentHrId;
 
-    // Sidebar
+    // Sidebar toggle
     document.getElementById('menu-toggle').addEventListener('click', () => {
         document.getElementById('sidebar').classList.add('open');
         document.getElementById('sidebar-overlay').classList.add('active');
@@ -1727,51 +1631,65 @@ async function init() {
             document.getElementById('search-results').classList.add('active');
         }
     });
-    
-    // Outside clicks
+
+    // Close dropdowns on outside click
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.header-right') && !e.target.closest('.header-search')) {
             document.querySelectorAll('.dropdown-menu, .search-dropdown').forEach(el => el.classList.remove('active'));
         }
     });
 
-    // Realtime Subscriptions
-    supabaseClient.channel('tickets-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
-        if (!document.getElementById('view-dashboard').classList.contains('hidden')) { 
-            loadRecentCases(); 
-            loadKPIs(); 
-            loadDashboardCharts(); 
-        }
-        if (!document.getElementById('view-cases').classList.contains('hidden')) {
-            loadCasesTable(currentCasePage);
-        }
-        updateNotificationCount();
-    }).subscribe();
+    // Realtime subscriptions
+    supabaseClient
+        .channel('tickets-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+            if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+                loadRecentCases();
+                loadKPIs();
+                loadDashboardCharts(); // refresh charts
+            }
+            if (!document.getElementById('view-cases').classList.contains('hidden')) {
+                loadCasesTable();
+            }
+            updateNotificationCount();
+        })
+        .subscribe();
 
-    supabaseClient.channel('tasks-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
-            loadTasks();
-            loadKPIs();
-        }
-        if (!document.getElementById('view-tasks').classList.contains('hidden')) {
-            loadFullTasks();
-        }
-        updateNotificationCount();
-    }).subscribe();
+    supabaseClient
+        .channel('tasks-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+            if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+                loadTasks();
+                loadKPIs();
+            }
+            if (!document.getElementById('view-tasks').classList.contains('hidden')) {
+                loadFullTasks();
+            }
+            updateNotificationCount();
+        })
+        .subscribe();
 
-    supabaseClient.channel('notifications-tickets').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
-        updateNotificationCount();
-    }).subscribe();
+    supabaseClient
+        .channel('notifications-tickets')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+            updateNotificationCount();
+        })
+        .subscribe();
 
-    supabaseClient.channel('notifications-tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        updateNotificationCount();
-    }).subscribe();
+    supabaseClient
+        .channel('notifications-tasks')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+            updateNotificationCount();
+        })
+        .subscribe();
 
     // Tour button listener
     const tourBtn = document.getElementById('start-tour-btn');
     if (tourBtn) {
         tourBtn.addEventListener('click', startTour);
         console.log('Tour button listener attached');
+    } else {
+        console.error('Tour button not found');
     }
 
     // Dashboard chart filter buttons
@@ -1781,6 +1699,7 @@ async function init() {
             if (filter === 'all') {
                 navigate('view-analytics');
             } else {
+                // Remove active class from all filter buttons (optional styling)
                 document.querySelectorAll('.chart-filter-btn').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 currentChartFilter = filter;
@@ -1788,6 +1707,7 @@ async function init() {
             }
         });
     });
+    // Set default active button to 'week'
     const defaultWeek = document.querySelector('.chart-filter-btn[data-filter="week"]');
     if (defaultWeek) defaultWeek.classList.add('active');
 
@@ -1795,14 +1715,21 @@ async function init() {
     document.querySelectorAll('.analytics-filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const filter = e.target.dataset.filter;
+            // Remove active class from all analytics filter buttons
             document.querySelectorAll('.analytics-filter-btn').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             currentAnalyticsFilter = filter;
             loadEnhancedAnalytics(filter);
         });
     });
+    // Set default analytics filter to 'month'
     const defaultMonth = document.querySelector('.analytics-filter-btn[data-filter="month"]');
     if (defaultMonth) defaultMonth.classList.add('active');
+
+    // Expose CSV functions globally
+    window.exportEmployeesCSV = exportEmployeesCSV;
+    window.openImportCSVModal = openImportCSVModal;
+    window.processCSVUpload = processCSVUpload;
 
     navigate('view-dashboard');
 }
@@ -1830,8 +1757,6 @@ window.filterCases = filterCases;
 window.sortTable = sortTable;
 window.closeModal = closeModal;
 window.signOut = signOut;
-window.loadCasesTable = loadCasesTable;
-window.loadEmployeeDirectory = loadEmployeeDirectory;
 window.viewProfile = () => { alert('Profile page coming soon'); };
 window.applyAnalyticsFilter = applyAnalyticsFilter;
 window.exportAnalyticsCSV = exportAnalyticsCSV;
@@ -1841,8 +1766,5 @@ window.uploadDocument = uploadDocument;
 window.addEmployee = addEmployee;
 window.openReportScheduler = openReportScheduler;
 window.scheduleReport = scheduleReport;
-window.exportEmployeesCSV = exportEmployeesCSV;
-window.openImportCSVModal = openImportCSVModal;
-window.processCSVUpload = processCSVUpload;
 
 init();
