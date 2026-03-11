@@ -1,4 +1,6 @@
-// hr-ticket.js – upgraded with internal notes height fix, task creation on reassign, etc.
+// hr-ticket.js – upgraded with internal notes height fix, task creation on reassign,
+// and duplicate message fix (rely on realtime subscription for all message displays)
+
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
 let currentHrId = null;
@@ -100,6 +102,7 @@ async function loadTicket() {
 
         loadNotes();
 
+        // Subscribe to new messages – all inserts will be displayed here
         supabaseClient
             .channel(`ticket-${currentTicketId}`)
             .on('postgres_changes', {
@@ -161,32 +164,33 @@ async function sendReply() {
     if (!text) return;
     input.value = '';
 
-    const { data: msg, error } = await supabaseClient
+    // Insert HR message – display will be handled by realtime subscription
+    const { error } = await supabaseClient
         .from('messages')
         .insert({
             ticket_id: currentTicketId,
             sender_type: 'hr',
             sender_id: currentHrId,
             content: text
-        })
-        .select()
-        .single();
+        });
 
     if (error) {
         showToast('Error sending reply: ' + error.message, 'error');
-    } else {
-        displayMessage(msg);
-        const { data: ticket } = await supabaseClient
+        return;
+    }
+    // ✅ No manual display – subscription will show it
+
+    // Update first response time if this is the first HR reply
+    const { data: ticket } = await supabaseClient
+        .from('tickets')
+        .select('first_hr_response_at')
+        .eq('id', currentTicketId)
+        .single();
+    if (!ticket.first_hr_response_at) {
+        await supabaseClient
             .from('tickets')
-            .select('first_hr_response_at')
-            .eq('id', currentTicketId)
-            .single();
-        if (!ticket.first_hr_response_at) {
-            await supabaseClient
-                .from('tickets')
-                .update({ first_hr_response_at: new Date().toISOString() })
-                .eq('id', currentTicketId);
-        }
+            .update({ first_hr_response_at: new Date().toISOString() })
+            .eq('id', currentTicketId);
     }
 }
 
@@ -259,6 +263,7 @@ async function takeOver() {
             console.log('Take over successful');
             showToast('You have taken over this conversation', 'success');
             await createAssignmentTask(currentTicket);
+            // Insert system message – display handled by subscription
             await supabaseClient
                 .from('messages')
                 .insert({
