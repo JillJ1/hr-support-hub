@@ -918,22 +918,22 @@ if (startDate && endDate) {
         const rated = tickets.filter(t => t.rating !== null && t.rating !== -1);
         const avgRating = rated.length ? (rated.reduce((acc, t) => acc + t.rating, 0) / rated.length).toFixed(1) : 'N/A';
 
-        let totalResponseDays = 0, responseCount = 0;
-        let totalResolutionDays = 0, resolutionCount = 0;
-        tickets.forEach(t => {
-            if (t.first_hr_response_at && t.created_at) {
-                const responseTime = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60*24);
-                totalResponseDays += responseTime;
-                responseCount++;
-            }
-            if (t.resolved_at && t.created_at) {
-                const resolutionTime = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24);
-                totalResolutionDays += resolutionTime;
-                resolutionCount++;
-            }
-        });
-        const avgResponse = responseCount ? (totalResponseDays / responseCount).toFixed(1) : 'N/A';
-        const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
+        let totalResponseHours = 0, responseCount = 0;
+let totalResolutionDays = 0, resolutionCount = 0;
+tickets.forEach(t => {
+    if (t.first_hr_response_at && t.created_at) {
+        const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60); // hours
+        totalResponseHours += responseHours;
+        responseCount++;
+    }
+    if (t.resolved_at && t.created_at) {
+        const resolutionDays = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24); // days
+        totalResolutionDays += resolutionDays;
+        resolutionCount++;
+    }
+});
+const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
+const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
 
         document.getElementById('total-tickets').textContent = total;
         document.getElementById('open-tickets').textContent = open;
