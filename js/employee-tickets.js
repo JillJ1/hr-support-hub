@@ -85,21 +85,33 @@ async function loadTickets() {
             const div = document.createElement('div');
             div.className = 'ticket-item';
             
-            let statusClass = 'status-open';
             let statusText = 'Open';
-            if (ticket.status === 'inprogress') { statusClass = 'status-inprogress'; statusText = 'In Progress'; } 
-            else if (ticket.status === 'closed') { statusClass = 'status-resolved'; statusText = 'Resolved'; } 
-            else if (ticket.status === 'escalated') { statusClass = 'status-escalated'; statusText = 'Escalated'; }
+            let statusColor = '#0a5b8c'; // Blue
+            let statusBg = '#e0f0ff';
+            
+            if (ticket.status === 'inprogress') { 
+                statusText = 'In Progress'; 
+                statusColor = '#d97706'; // Orange
+                statusBg = '#fef3c7';
+            } else if (ticket.status === 'closed') { 
+                statusText = 'Resolved'; 
+                statusColor = '#059669'; // Green
+                statusBg = '#d1fae5';
+            } else if (ticket.status === 'escalated') { 
+                statusText = 'Escalated'; 
+                statusColor = '#dc2626'; // Red
+                statusBg = '#fee2e2';
+            }
 
             const date = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             
             div.innerHTML = `
                 <div>
-                    <strong>${escapeHTML(ticket.issue_summary || 'No summary provided')}</strong>
-                    <div class="ticket-meta">Ticket ID: ${ticket.id.substr(0,8)} • Created: ${date}</div>
+                    <strong style="font-size: 1.05rem; color: #1c1c1e;">${escapeHTML(ticket.issue_summary || 'No summary provided')}</strong>
+                    <div class="ticket-meta" style="color: #6c6c70; font-size: 0.85rem; margin-top: 4px;">Ticket ID: ${ticket.id.substr(0,8)} • Created: ${date}</div>
                 </div>
                 <div>
-                    <span class="status-badge ${statusClass}">${statusText}</span>
+                    <span style="display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; color: ${statusColor}; background-color: ${statusBg};">${statusText}</span>
                 </div>
             `;
             
