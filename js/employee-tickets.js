@@ -85,6 +85,7 @@ async function loadTickets() {
             const div = document.createElement('div');
             div.className = 'ticket-item';
             
+            // Injecting the colors directly so the badges always render
             let statusText = 'Open';
             let statusColor = '#0a5b8c'; // Blue
             let statusBg = '#e0f0ff';
@@ -106,12 +107,12 @@ async function loadTickets() {
             const date = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             
             div.innerHTML = `
-                <div>
+                <div style="flex: 1;">
                     <strong style="font-size: 1.05rem; color: #1c1c1e;">${escapeHTML(ticket.issue_summary || 'No summary provided')}</strong>
                     <div class="ticket-meta" style="color: #6c6c70; font-size: 0.85rem; margin-top: 4px;">Ticket ID: ${ticket.id.substr(0,8)} • Created: ${date}</div>
                 </div>
-                <div>
-                    <span style="display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; color: ${statusColor}; background-color: ${statusBg};">${statusText}</span>
+                <div style="margin-left: 15px;">
+                    <span style="display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; color: ${statusColor}; background-color: ${statusBg}; white-space: nowrap;">${statusText}</span>
                 </div>
             `;
             
