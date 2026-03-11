@@ -138,12 +138,27 @@ async function sendMessage() {
 
     if (botActive) {
         try {
+            // 🔐 Get the current session token
+            const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+            if (sessionError || !sessionData?.session?.access_token) {
+                throw new Error('No valid session token');
+            }
+            const token = sessionData.session.access_token;
+
             const response = await fetch(botApiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`   // 🔑 Add token here
+                },
                 body: JSON.stringify({ query: text, ticket_id: currentTicketId })
             });
-            if (!response.ok) throw new Error('Bot API error');
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Bot API error (${response.status}): ${errorText}`);
+            }
+
             const data = await response.json();
 
             removeTyping();
@@ -167,6 +182,9 @@ async function sendMessage() {
         } catch (error) {
             console.error('Bot error:', error);
             removeTyping();
+            // Show more specific error in toast for debugging (remove in production)
+            showToast(`Bot error: ${error.message}`, 'error');
+            // Fallback bot message
             const { data: errMsg } = await supabaseClient
                 .from('messages')
                 .insert({
