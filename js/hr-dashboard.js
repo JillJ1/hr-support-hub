@@ -984,52 +984,90 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
         }
 
         // Response time trend (daily average response time in hours)
-        const dailyResponse = {};
-        tickets.forEach(t => {
-            if (t.first_hr_response_at && t.created_at) {
-                const day = t.created_at.slice(0,10);
-                const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
-                if (!dailyResponse[day]) dailyResponse[day] = { sum: 0, count: 0 };
-                dailyResponse[day].sum += responseHours;
-                dailyResponse[day].count++;
-            }
-        });
-        const responseDays = Object.keys(dailyResponse).sort();
-        const avgResponseHours = responseDays.map(d => (dailyResponse[d].sum / dailyResponse[d].count).toFixed(1));
+        
+       // ==================== RESPONSE TIME CHART (IMPROVED) ====================
+const dailyResponse = {};
+tickets.forEach(t => {
+    if (t.first_hr_response_at && t.created_at) {
+        const day = t.created_at.slice(0,10);
+        const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
+        if (!dailyResponse[day]) dailyResponse[day] = { sum: 0, count: 0 };
+        dailyResponse[day].sum += responseHours;
+        dailyResponse[day].count++;
+    }
+});
 
-        if (responseTimeChart) responseTimeChart.destroy();
-        const ctxResponse = document.getElementById('responseTimeChart')?.getContext('2d');
-        if (ctxResponse) {
-            responseTimeChart = new Chart(ctxResponse, {
-                type: 'line',
-                data: {
-                    labels: responseDays,
-                    datasets: [{
-                        label: 'Avg Response (hours)',
-                        data: avgResponseHours,
-                        borderColor: '#f97316',
-                        backgroundColor: 'rgba(249,115,22,0.1)',
-                        tension: 0.2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } }
+const responseDays = Object.keys(dailyResponse).sort();
+const avgResponseHours = responseDays.map(d => (dailyResponse[d].sum / dailyResponse[d].count).toFixed(1));
+const responseCounts = responseDays.map(d => dailyResponse[d].count);
+
+if (responseTimeChart) responseTimeChart.destroy();
+const ctxResponse = document.getElementById('responseTimeChart')?.getContext('2d');
+if (ctxResponse) {
+    responseTimeChart = new Chart(ctxResponse, {
+        type: 'bar', // changed to bar chart for clarity
+        data: {
+            labels: responseDays,
+            datasets: [{
+                label: 'Avg Response Time (hours)',
+                data: avgResponseHours,
+                backgroundColor: '#f97316',
+                borderColor: '#c2410c',
+                borderWidth: 1,
+                borderRadius: 4,
+                // Add tooltip callback to show count
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: (context) => {
+                            const day = context.label;
+                            const count = dailyResponse[day]?.count || 0;
+                            return `Based on ${count} response${count === 1 ? '' : 's'}`;
+                        }
+                    }
                 }
-            });
-        } else if (responseDays.length === 0) {
-            const canvas = document.getElementById('responseTimeChart');
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.font = '14px Arial';
-                ctx.fillStyle = '#64748b';
-                ctx.textAlign = 'center';
-                ctx.fillText('No response data for this period', canvas.width/2, canvas.height/2);
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Hours'
+                    },
+                    ticks: {
+                        callback: (value) => value + 'h'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Date'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 30
+                    }
+                }
             }
         }
-
+    });
+} else if (responseDays.length === 0) {
+    const canvas = document.getElementById('responseTimeChart');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = '14px Arial';
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'center';
+        ctx.fillText('No response data for this period', canvas.width/2, canvas.height/2);
+    }
+}
         // Hourly heatmap (simplified as bar chart of tickets by hour)
         const hourCounts = Array(24).fill(0);
         tickets.forEach(t => {
