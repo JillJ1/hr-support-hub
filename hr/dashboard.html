@@ -407,22 +407,19 @@
                 </div>
             </div>
 
-            <!-- Enhanced Tickets Chart with Filter and Count -->
-            <div class="dashboard-grid" style="margin-top: 20px;">
-                <div class="widget-card">
-                    <div class="widget-header">
-                        <h3>Tickets <span id="tickets-count" style="font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;"></span></h3>
-                        <div style="display: flex; gap: 8px;">
-                            <select id="tickets-chart-filter" class="filter-select">
-                                <option value="day">Today</option>
-                                <option value="week" selected>This Week</option>
-                                <option value="month">This Month</option>
-                                <option value="all">All Time</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div style="padding: 20px;"><canvas id="dashboard-tickets-chart"></canvas></div>
-                </div>
+           <!-- Enhanced Tickets Chart with Filter Buttons -->
+<div class="widget-card">
+    <div class="widget-header">
+        <h3>Tickets <span id="tickets-count" style="font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;"></span></h3>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline chart-filter-btn" data-filter="day">Today</button>
+            <button class="btn btn-outline chart-filter-btn" data-filter="week">This Week</button>
+            <button class="btn btn-outline chart-filter-btn" data-filter="month">This Month</button>
+            <button class="btn btn-primary chart-filter-btn" data-filter="all">All</button>
+        </div>
+    </div>
+    <div style="padding: 20px;"><canvas id="dashboard-tickets-chart"></canvas></div>
+</div>
                 <div class="widget-card">
                     <div class="widget-header"><h3>Categories</h3></div>
                     <div style="padding: 20px;"><canvas id="dashboard-category-chart"></canvas></div>
