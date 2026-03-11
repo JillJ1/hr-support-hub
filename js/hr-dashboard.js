@@ -915,23 +915,23 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
         const rated = tickets.filter(t => t.rating !== null && t.rating !== -1);
         const avgRating = rated.length ? (rated.reduce((acc, t) => acc + t.rating, 0) / rated.length).toFixed(1) : 'N/A';
 
-        let totalResponseHours = 0, responseCount = 0;
-        let totalResolutionDays = 0, resolutionCount = 0;
-        tickets.forEach(t => {
-            if (t.first_hr_response_at && t.created_at) {
-                const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
-                totalResponseHours += responseHours;
-                responseCount++;
-            }
-            if (t.resolved_at && t.created_at) {
-                const resolutionDays = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24);
-                totalResolutionDays += resolutionDays;
-                resolutionCount++;
-            }
-        });
-        const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
-        const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
-
+let totalResponseHours = 0, responseCount = 0;
+let totalResolutionHours = 0, resolutionCount = 0;
+tickets.forEach(t => {
+    if (t.first_hr_response_at && t.created_at) {
+        const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
+        totalResponseHours += responseHours;
+        responseCount++;
+    }
+    if (t.resolved_at && t.created_at) {
+        const resolutionHours = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60);
+        totalResolutionHours += resolutionHours;
+        resolutionCount++;
+    }
+});
+const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
+const avgResolution = resolutionCount ? (totalResolutionHours / resolutionCount).toFixed(1) : 'N/A';
+        
         document.getElementById('total-tickets').textContent = total;
         document.getElementById('open-tickets').textContent = openNow;
         document.getElementById('avg-resolution').textContent = avgResolution;
