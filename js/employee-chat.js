@@ -1,4 +1,6 @@
-// employee-chat.js – upgraded with env variable for bot API, typing indicator fix
+// employee-chat.js – upgraded with env variable for bot API, typing indicator fix,
+// and duplicate message fix (rely on realtime subscription for all displays)
+
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
 
@@ -116,15 +118,14 @@ async function sendMessage() {
 
     showTyping();
 
-    const { data: empMsg, error: msgError } = await supabaseClient
+    // Insert employee message – display will be handled by realtime subscription
+    const { error: msgError } = await supabaseClient
         .from('messages')
         .insert({
             ticket_id: currentTicketId,
             sender_type: 'employee',
             content: text
-        })
-        .select()
-        .single();
+        });
 
     if (msgError) {
         console.error('Error saving message:', msgError);
@@ -133,8 +134,7 @@ async function sendMessage() {
         showToast('Failed to send message', 'error');
         return;
     }
-
-    displayMessage(empMsg);
+    // ✅ No manual display – subscription will show it
 
     if (botActive) {
         try {
@@ -163,38 +163,33 @@ async function sendMessage() {
 
             removeTyping();
 
-            const { data: botMsg, error: botError } = await supabaseClient
+            // Insert bot message – display handled by subscription
+            const { error: botError } = await supabaseClient
                 .from('messages')
                 .insert({
                     ticket_id: currentTicketId,
                     sender_type: 'bot',
                     content: data.answer
-                })
-                .select()
-                .single();
+                });
 
             if (botError) {
                 console.error('Error saving bot message:', botError);
-            } else {
-                displayMessage(botMsg);
             }
+            // ✅ No manual display
 
         } catch (error) {
             console.error('Bot error:', error);
             removeTyping();
-            // Show more specific error in toast for debugging (remove in production)
             showToast(`Bot error: ${error.message}`, 'error');
-            // Fallback bot message
-            const { data: errMsg } = await supabaseClient
+            // Insert fallback bot message – display handled by subscription
+            await supabaseClient
                 .from('messages')
                 .insert({
                     ticket_id: currentTicketId,
                     sender_type: 'bot',
                     content: '⚠️ Sorry, I encountered an error. Please try again or escalate to HR.'
-                })
-                .select()
-                .single();
-            if (errMsg) displayMessage(errMsg);
+                });
+            // ✅ No manual display
         }
     } else {
         removeTyping();
@@ -237,16 +232,15 @@ async function escalateToHR() {
         console.error('Error sending escalation email:', err);
     }
 
-    const { data: sysMsg } = await supabaseClient
+    // Insert system message – display handled by subscription
+    await supabaseClient
         .from('messages')
         .insert({
             ticket_id: currentTicketId,
             sender_type: 'bot',
             content: 'Your request has been escalated to HR. Someone will contact you soon.'
-        })
-        .select()
-        .single();
-    if (sysMsg) displayMessage(sysMsg);
+        });
+    // ✅ No manual display
 
     document.getElementById('escalate-btn').disabled = true;
     document.getElementById('escalate-btn').textContent = 'Escalated';
@@ -299,6 +293,7 @@ async function init() {
 
     await loadMessages();
 
+    // Subscribe to new messages – all inserts will be displayed here
     supabaseClient
         .channel(`ticket-${currentTicketId}`)
         .on('postgres_changes', {
@@ -311,6 +306,7 @@ async function init() {
         })
         .subscribe();
 
+    // Subscribe to ticket updates (e.g., bot_active change)
     supabaseClient
         .channel(`ticket-${currentTicketId}-status`)
         .on('postgres_changes', {
