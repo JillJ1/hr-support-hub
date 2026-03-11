@@ -1,42 +1,7 @@
-// employee-tickets.js
-
-// ==================== GLOBAL CONFIGURATION & STATE ====================
-const APP_CONFIG = {
-    supabaseUrl: 'https://sbaslcgmbwfnqbwtzsil.supabase.co',
-    vercelUrl: 'https://hr-support-hub.vercel.app'
-};
-
+const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let employeeId = null;
 let employeeName = '';
 
-// ==================== UTILITY FUNCTIONS ====================
-function escapeHTML(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>"]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        if (m === '"') return '&quot;';
-        return m;
-    });
-}
-
-function setButtonLoading(button, isLoading, loadingText = 'Processing...') {
-    if (isLoading) {
-        button.dataset.originalText = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = loadingText;
-        button.style.opacity = '0.7';
-        button.style.cursor = 'wait';
-    } else {
-        button.disabled = false;
-        button.innerHTML = button.dataset.originalText;
-        button.style.opacity = '1';
-        button.style.cursor = 'pointer';
-    }
-}
-
-// ==================== TICKET LOADING ====================
 async function loadTickets() {
     const listDiv = document.getElementById('ticket-list');
     const timeFilter = document.getElementById('time-filter').value;
@@ -70,81 +35,59 @@ async function loadTickets() {
         query = query.eq('status', statusFilter);
     }
 
-    try {
-        const { data: tickets, error } = await query;
+    const { data: tickets, error } = await query;
 
-        if (error) throw error;
-
-        if (!tickets.length) {
-            listDiv.innerHTML = '<div class="empty-state">No tickets found for the selected filters.</div>';
-            return;
-        }
-
-        listDiv.innerHTML = '';
-        tickets.forEach(ticket => {
-            const div = document.createElement('div');
-            div.className = 'ticket-item';
-            
-            // Injecting the colors directly so the badges always render
-            let statusText = 'Open';
-            let statusColor = '#0a5b8c'; // Blue
-            let statusBg = '#e0f0ff';
-            
-            if (ticket.status === 'inprogress') { 
-                statusText = 'In Progress'; 
-                statusColor = '#d97706'; // Orange
-                statusBg = '#fef3c7';
-            } else if (ticket.status === 'closed') { 
-                statusText = 'Resolved'; 
-                statusColor = '#059669'; // Green
-                statusBg = '#d1fae5';
-            } else if (ticket.status === 'escalated') { 
-                statusText = 'Escalated'; 
-                statusColor = '#dc2626'; // Red
-                statusBg = '#fee2e2';
-            }
-
-            const date = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            
-            div.innerHTML = `
-                <div style="flex: 1;">
-                    <strong style="font-size: 1.05rem; color: #1c1c1e;">${escapeHTML(ticket.issue_summary || 'No summary provided')}</strong>
-                    <div class="ticket-meta" style="color: #6c6c70; font-size: 0.85rem; margin-top: 4px;">Ticket ID: ${ticket.id.substr(0,8)} • Created: ${date}</div>
-                </div>
-                <div style="margin-left: 15px;">
-                    <span style="display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; color: ${statusColor}; background-color: ${statusBg}; white-space: nowrap;">${statusText}</span>
-                </div>
-            `;
-            
-            div.addEventListener('click', () => {
-                sessionStorage.setItem('currentTicketId', ticket.id);
-                window.location.href = '/employee/chat.html';
-            });
-            
-            listDiv.appendChild(div);
-        });
-    } catch (err) {
-        console.error('Error loading tickets:', err);
-        listDiv.innerHTML = '<div class="empty-state" style="color: var(--danger-red);">Failed to load tickets. Please try again later.</div>';
+    if (error) {
+        console.error('Error loading tickets:', error);
+        listDiv.innerHTML = '<div class="empty-state">Error loading tickets.</div>';
+        return;
     }
+
+    if (!tickets.length) {
+        listDiv.innerHTML = '<div class="empty-state">No tickets found.</div>';
+        return;
+    }
+
+    listDiv.innerHTML = '';
+    tickets.forEach(ticket => {
+        const div = document.createElement('div');
+        div.className = 'ticket-item';
+        let statusClass = 'status-open';
+        if (ticket.status === 'inprogress') statusClass = 'status-inprogress';
+        else if (ticket.status === 'closed') statusClass = 'status-resolved';
+        else if (ticket.status === 'escalated') statusClass = 'status-escalated';
+
+        const date = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        div.innerHTML = `
+            <div>
+                <strong>${escapeHTML(ticket.issue_summary || 'No summary')}</strong>
+                <div class="ticket-meta">ID: ${ticket.id.substr(0,8)} • ${date}</div>
+            </div>
+            <span class="status-badge ${statusClass}">${ticket.status}</span>
+        `;
+        div.onclick = () => {
+            sessionStorage.setItem('currentTicketId', ticket.id);
+            window.location.href = '/employee/chat.html';
+        };
+        listDiv.appendChild(div);
+    });
 }
 
-// ==================== INITIALIZATION ====================
 async function init() {
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
         window.location.href = '/';
         return;
     }
 
-    const { data: emp, error: empError } = await supabaseClient
+    const { data: emp } = await supabaseClient
         .from('employees')
         .select('id, full_name')
         .eq('auth_id', user.id)
         .single();
 
-    if (empError || !emp) {
-        alert('Access denied. Employee profile not found.');
+    if (!emp) {
+        alert('Employee profile not found.');
         window.location.href = '/';
         return;
     }
@@ -152,64 +95,60 @@ async function init() {
     employeeId = emp.id;
     employeeName = emp.full_name;
 
-    document.getElementById('emp-name-display').textContent = employeeName;
-
     loadTickets();
 
-    // Set up real-time updates for tickets list
+    // Listen for changes
     supabaseClient
-        .channel('employee-tickets-changes')
-        .on('postgres_changes', { 
-            event: '*', 
-            schema: 'public', 
-            table: 'tickets', 
-            filter: `employee_id=eq.${employeeId}` 
-        }, () => {
+        .channel('public:tickets')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets', filter: `employee_id=eq.${employeeId}` }, payload => {
             loadTickets();
         })
         .subscribe();
 
-    // Create New Chat (With Loading State)
-    document.getElementById('new-chat-btn').addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        
+    document.getElementById('new-chat-btn').addEventListener('click', async () => {
         const summary = prompt("Please briefly describe your issue:", "New chat");
-        if (!summary) return;
-        
-        setButtonLoading(btn, true, 'Creating...');
+        if (summary === null) return;
         
         const category = typeof classifyIssue === 'function' ? classifyIssue(summary) : 'general'; 
         
-        try {
-            const { data: newTicket, error: createError } = await supabaseClient
-                .from('tickets')
-                .insert({ 
-                    employee_id: employeeId, 
-                    status: 'open', 
-                    bot_active: true, 
-                    issue_summary: summary,
-                    category: category
-                })
-                .select()
-                .single();
+        const { data: newTicket, error: createError } = await supabaseClient
+            .from('tickets')
+            .insert({ 
+                employee_id: employeeId, 
+                status: 'open', 
+                bot_active: true, 
+                issue_summary: summary,
+                category: category
+            })
+            .select()
+            .single();
 
-            if (createError) throw createError;
-            
-            sessionStorage.setItem('currentTicketId', newTicket.id);
-            window.location.href = '/employee/chat.html';
-        } catch (err) {
-            console.error('Error creating ticket:', err);
-            alert('Could not create new chat: ' + err.message);
-            setButtonLoading(btn, false);
+        if (createError) {
+            console.error('Error creating ticket:', createError);
+            alert('Could not create new chat: ' + createError.message);
+            return;
         }
+        
+        sessionStorage.setItem('currentTicketId', newTicket.id);
+        window.location.href = '/employee/chat.html';
     });
 
-    // Logout
     document.getElementById('logout-btn').addEventListener('click', async () => {
         await supabaseClient.auth.signOut();
         window.location.href = '/';
     });
 }
 
-window.loadTickets = loadTickets;
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>\"]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        if (m === '\"') return '&quot;';
+        return m;
+    });
+}
+
 init();
+window.loadTickets = loadTickets;
