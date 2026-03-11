@@ -240,6 +240,16 @@
         .task-item.completed .task-details { opacity: 0.5; text-decoration: line-through; }
         .task-item.completed .btn-outline { background-color: var(--success-green); color: white; border-color: var(--success-green); pointer-events: none;}
 
+        /* Chart filter button active state */
+        .chart-filter-btn.active {
+            background: var(--primary-blue);
+            color: white;
+            border-color: var(--primary-blue);
+        }
+        .chart-filter-btn.active:hover {
+            background: var(--primary-blue-dark);
+        }
+
         /* Modals */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -407,19 +417,20 @@
                 </div>
             </div>
 
-           <!-- Enhanced Tickets Chart with Filter Buttons -->
-<div class="widget-card">
-    <div class="widget-header">
-        <h3>Tickets <span id="tickets-count" style="font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;"></span></h3>
-        <div style="display: flex; gap: 8px;">
-            <button class="btn btn-outline chart-filter-btn" data-filter="day">Today</button>
-            <button class="btn btn-outline chart-filter-btn" data-filter="week">This Week</button>
-            <button class="btn btn-outline chart-filter-btn" data-filter="month">This Month</button>
-            <button class="btn btn-primary chart-filter-btn" data-filter="all">All</button>
-        </div>
-    </div>
-    <div style="padding: 20px;"><canvas id="dashboard-tickets-chart"></canvas></div>
-</div>
+            <!-- Enhanced Tickets Chart with Filter Buttons -->
+            <div class="dashboard-grid" style="margin-top: 20px;">
+                <div class="widget-card">
+                    <div class="widget-header">
+                        <h3>Tickets <span id="tickets-count" style="font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;"></span></h3>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-outline chart-filter-btn" data-filter="day">Today</button>
+                            <button class="btn btn-outline chart-filter-btn" data-filter="week">This Week</button>
+                            <button class="btn btn-outline chart-filter-btn" data-filter="month">This Month</button>
+                            <button class="btn btn-primary chart-filter-btn" data-filter="all">All</button>
+                        </div>
+                    </div>
+                    <div style="padding: 20px;"><canvas id="dashboard-tickets-chart"></canvas></div>
+                </div>
                 <div class="widget-card">
                     <div class="widget-header"><h3>Categories</h3></div>
                     <div style="padding: 20px;"><canvas id="dashboard-category-chart"></canvas></div>
