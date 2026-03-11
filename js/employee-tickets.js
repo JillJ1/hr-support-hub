@@ -1,3 +1,4 @@
+// employee-tickets.js
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let employeeId = null;
 let employeeName = '';
@@ -73,9 +74,9 @@ async function loadTickets() {
             <span class="badge ${statusClass}">${ticket.status}</span>
         `;
         
+        // 🔗 Navigate with ticket ID in URL
         ticketDiv.addEventListener('click', () => {
-            sessionStorage.setItem('currentTicketId', ticket.id);
-            window.location.href = '/employee/chat.html';
+            window.location.href = `/employee/chat.html?id=${ticket.id}`;
         });
         
         listDiv.appendChild(ticketDiv);
@@ -130,8 +131,8 @@ async function init() {
             return;
         }
         
-        sessionStorage.setItem('currentTicketId', newTicket.id);
-        window.location.href = '/employee/chat.html';
+        // 🔗 Navigate with ticket ID in URL
+        window.location.href = `/employee/chat.html?id=${newTicket.id}`;
     });
 
     document.getElementById('logout-btn').addEventListener('click', async () => {
