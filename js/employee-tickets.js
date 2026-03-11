@@ -39,37 +39,46 @@ async function loadTickets() {
 
     if (error) {
         console.error('Error loading tickets:', error);
-        listDiv.innerHTML = '<div class="empty-state">Error loading tickets.</div>';
+        listDiv.innerHTML = '<div class="empty-state">Error loading tickets. Please refresh.</div>';
         return;
     }
 
     if (!tickets.length) {
-        listDiv.innerHTML = '<div class="empty-state">No tickets found.</div>';
+        listDiv.innerHTML = '<div class="empty-state">No tickets found. Start a new chat!</div>';
         return;
     }
 
     listDiv.innerHTML = '';
     tickets.forEach(ticket => {
-        const div = document.createElement('div');
-        div.className = 'ticket-item';
-        let statusClass = 'status-open';
-        if (ticket.status === 'inprogress') statusClass = 'status-inprogress';
-        else if (ticket.status === 'closed') statusClass = 'status-resolved';
-        else if (ticket.status === 'escalated') statusClass = 'status-escalated';
-
-        const date = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        div.innerHTML = `
-            <div>
-                <strong>${escapeHTML(ticket.issue_summary || 'No summary')}</strong>
-                <div class="ticket-meta">ID: ${ticket.id.substr(0,8)} • ${date}</div>
+        const ticketDiv = document.createElement('div');
+        ticketDiv.className = 'ticket-item';
+        ticketDiv.dataset.id = ticket.id;
+        
+        let statusClass = ticket.status.toLowerCase().replace(' ', '');
+        const date = new Date(ticket.created_at);
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        
+        ticketDiv.innerHTML = `
+            <div class="ticket-left">
+                <div class="ticket-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                </div>
+                <div class="ticket-info">
+                    <h3>${escapeHTML(ticket.issue_summary || 'Chat session')}</h3>
+                    <p>Case #${ticket.id.substr(0,8)} • ${formattedDate}</p>
+                </div>
             </div>
-            <span class="status-badge ${statusClass}">${ticket.status}</span>
+            <span class="badge ${statusClass}">${ticket.status}</span>
         `;
-        div.onclick = () => {
+        
+        ticketDiv.addEventListener('click', () => {
             sessionStorage.setItem('currentTicketId', ticket.id);
             window.location.href = '/employee/chat.html';
-        };
-        listDiv.appendChild(div);
+        });
+        
+        listDiv.appendChild(ticketDiv);
     });
 }
 
@@ -80,30 +89,22 @@ async function init() {
         return;
     }
 
-    const { data: emp } = await supabaseClient
+    employeeName = user.user_metadata?.full_name || user.email || 'Employee';
+
+    const { data: employee, error } = await supabaseClient
         .from('employees')
-        .select('id, full_name')
+        .select('id')
         .eq('auth_id', user.id)
         .single();
 
-    if (!emp) {
-        alert('Employee profile not found.');
+    if (error || !employee) {
+        alert('Employee record not found. Please contact HR.');
         window.location.href = '/';
         return;
     }
 
-    employeeId = emp.id;
-    employeeName = emp.full_name;
-
-    loadTickets();
-
-    // Listen for changes
-    supabaseClient
-        .channel('public:tickets')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets', filter: `employee_id=eq.${employeeId}` }, payload => {
-            loadTickets();
-        })
-        .subscribe();
+    employeeId = employee.id;
+    await loadTickets();
 
     document.getElementById('new-chat-btn').addEventListener('click', async () => {
         const summary = prompt("Please briefly describe your issue:", "New chat");
@@ -141,11 +142,11 @@ async function init() {
 
 function escapeHTML(str) {
     if (!str) return '';
-    return String(str).replace(/[&<>\"]/g, function(m) {
+    return String(str).replace(/[&<>"]/g, function(m) {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
-        if (m === '\"') return '&quot;';
+        if (m === '"') return '&quot;';
         return m;
     });
 }
