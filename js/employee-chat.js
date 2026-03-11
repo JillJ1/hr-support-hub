@@ -174,6 +174,8 @@ async function sendMessage() {
 
 async function escalateToHR() {
     const btn = document.getElementById('escalate-btn');
+    if (!btn) return;
+    
     const originalText = btn.textContent;
     btn.textContent = 'Escalating...';
     btn.disabled = true;
@@ -241,10 +243,15 @@ async function init() {
     if (ticket) {
         botActive = ticket.bot_active;
         if (ticket.status === 'closed') {
-            document.getElementById('input-area').style.display = 'none';
-            document.getElementById('escalate-btn').style.display = 'none';
+            // FIXED: Using querySelector for class instead of getElementById, and adding safety checks
+            const inputArea = document.querySelector('.input-area');
+            if (inputArea) inputArea.style.display = 'none';
+            
+            const escalateBtn = document.getElementById('escalate-btn');
+            if (escalateBtn) escalateBtn.style.display = 'none';
         } else if (!botActive || ticket.status === 'escalated') {
-            document.getElementById('escalate-btn').style.display = 'none';
+            const escalateBtn = document.getElementById('escalate-btn');
+            if (escalateBtn) escalateBtn.style.display = 'none';
         }
     }
 
@@ -259,9 +266,6 @@ async function init() {
             table: 'messages',
             filter: `ticket_id=eq.${currentTicketId}`
         }, (payload) => {
-            // Prevent duplicate display for messages the user just sent themselves
-            // The displayMessage is already called on optimistic UI update if needed,
-            // but in this setup, it purely relies on the broadcast which is safer.
             displayMessage(payload.new);
         })
         .subscribe();
@@ -283,13 +287,19 @@ async function init() {
                     sender_type: 'bot',
                     content: 'HR has joined the conversation. They will respond to you directly.'
                 });
-                document.getElementById('escalate-btn').style.display = 'none';
+                const escalateBtn = document.getElementById('escalate-btn');
+                if (escalateBtn) escalateBtn.style.display = 'none';
             }
             
             // Ticket was closed
             if (newStatus === 'closed') {
-                document.querySelector('.input-area').style.display = 'none';
-                document.getElementById('escalate-btn').style.display = 'none';
+                // FIXED: Safety checks applied here as well
+                const inputArea = document.querySelector('.input-area');
+                if (inputArea) inputArea.style.display = 'none';
+                
+                const escalateBtn = document.getElementById('escalate-btn');
+                if (escalateBtn) escalateBtn.style.display = 'none';
+                
                 displayMessage({
                     sender_type: 'bot',
                     content: 'This ticket has been marked as resolved.'
@@ -301,22 +311,33 @@ async function init() {
         .subscribe();
 
     // Event Listeners
-    document.getElementById('back-btn').addEventListener('click', () => {
-        window.location.href = '/employee/tickets.html';
-    });
+    const backBtn = document.getElementById('back-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            window.location.href = '/employee/tickets.html';
+        });
+    }
 
-    document.getElementById('send-btn').addEventListener('click', sendMessage);
-    document.getElementById('message-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage();
-    });
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+    
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) {
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    }
 
     const escalateBtn = document.getElementById('escalate-btn');
     if (escalateBtn) escalateBtn.addEventListener('click', escalateToHR);
 
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-        await supabaseClient.auth.signOut();
-        window.location.href = '/';
-    });
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await supabaseClient.auth.signOut();
+            window.location.href = '/';
+        });
+    }
 }
 
 init();
