@@ -1,8 +1,9 @@
-// hr-dashboard.js
+// hr-dashboard.js – COMPLETE UPGRADED VERSION
 // ==================== GLOBAL VARIABLES ====================
 let currentFilter = 'open';
 let currentHrId = null;
 let currentHrName = '';
+let allHrStaff = []; // Cache for HR staff list (fixes N+1)
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
@@ -72,13 +73,14 @@ async function loadKPIs() {
         document.getElementById('kpi-meeting-count').textContent = docsCount || '0';
     } catch (err) {
         console.error('Error loading KPIs:', err);
+        showToast('Failed to load KPIs', 'error');
     }
 }
 
 // ==================== RECENT CASES ====================
 async function loadRecentCases() {
     const tbody = document.querySelector('#dashboard-cases-table tbody');
-    tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4"><div class="spinner"></div> Loading...</td></tr>';
 
     const filter = document.getElementById('recent-case-filter').value;
     let query = supabaseClient
@@ -120,9 +122,9 @@ async function loadRecentCases() {
     tbody.innerHTML = '';
     tickets.forEach(ticket => {
         const tr = document.createElement('tr');
+        // 🔗 Navigate with ticket ID in URL
         tr.addEventListener('click', () => {
-            sessionStorage.setItem('currentTicketId', ticket.id);
-            window.location.href = '/hr/ticket.html';
+            window.location.href = `/hr/ticket.html?id=${ticket.id}`;
         });
         let statusClass = 'status-open';
         let statusText = 'Open';
@@ -149,7 +151,7 @@ async function loadRecentCases() {
 // ==================== DASHBOARD TASKS ====================
 async function loadTasks() {
     const list = document.getElementById('dashboard-task-list');
-    list.innerHTML = '';
+    list.innerHTML = '<li class="task-item"><div class="spinner"></div> Loading...</li>';
 
     const { data: tasks, error } = await supabaseClient
         .from('tasks')
@@ -169,6 +171,7 @@ async function loadTasks() {
         return;
     }
 
+    list.innerHTML = '';
     tasks.forEach(task => {
         const li = document.createElement('li');
         li.className = 'task-item';
@@ -181,14 +184,18 @@ async function loadTasks() {
 }
 
 // ==================== EMPLOYEE DIRECTORY ====================
-async function loadEmployeeDirectory() {
+async function loadEmployeeDirectory(page = 1, pageSize = 50) {
     const tbody = document.querySelector('#emp-table tbody');
-    tbody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="spinner"></div> Loading...</td></tr>';
 
-    const { data: employees, error } = await supabaseClient
+    // Pagination: fetch pageSize records
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    const { data: employees, error, count } = await supabaseClient
         .from('employees')
-        .select('*')
-        .order('full_name');
+        .select('*', { count: 'exact' })
+        .order('full_name')
+        .range(from, to);
 
     if (error) {
         console.error(error);
@@ -215,21 +222,31 @@ async function loadEmployeeDirectory() {
         `;
         tbody.appendChild(tr);
     });
+    // Optionally add pagination controls here
 }
 
-// ==================== FULL CASES TABLE ====================
-async function loadCasesTable() {
+// ==================== FULL CASES TABLE (with N+1 fix) ====================
+async function loadCasesTable(page = 1, pageSize = 50) {
     const tbody = document.querySelector('#cases-table tbody');
-    tbody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="spinner"></div> Loading...</td></tr>';
 
-    const { data: tickets, error } = await supabaseClient
+    // Fetch all HR staff once (fixes N+1)
+    const { data: hrStaff, error: hrError } = await supabaseClient
+        .from('hr_staff')
+        .select('id, display_name');
+    if (hrError) console.error('Error loading HR staff:', hrError);
+    allHrStaff = hrStaff || [];
+
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    const { data: tickets, error, count } = await supabaseClient
         .from('tickets')
         .select(`
             *,
-            employees (full_name),
-            assigned_to_hr:hr_staff!tickets_assigned_to_fkey (display_name)
-        `)
-        .order('created_at', { ascending: false });
+            employees (full_name)
+        `, { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
     if (error) {
         console.error(error);
@@ -257,11 +274,9 @@ async function loadCasesTable() {
             ? `<button class="btn btn-unassign" data-ticket-id="${ticket.id}" onclick="unassignTicket(this)">Unassign (${ticket.assigned_to_hr?.display_name || 'Me'})</button>`
             : `<button class="btn btn-assign" data-ticket-id="${ticket.id}" onclick="assignTicket(this)">Assign to Me</button>`;
 
-        const { data: hrStaff } = await supabaseClient
-            .from('hr_staff')
-            .select('id, display_name');
+        // Build reassign dropdown from cached allHrStaff
         let reassignOptions = '<option value="">+ Reassign to</option>';
-        hrStaff?.forEach(h => {
+        allHrStaff.forEach(h => {
             const selected = ticket.assigned_to === h.id ? 'selected' : '';
             reassignOptions += `<option value="${h.id}" ${selected}>${escapeHTML(h.display_name)}</option>`;
         });
@@ -282,8 +297,7 @@ async function loadCasesTable() {
 
         tr.addEventListener('click', (e) => {
             if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
-            sessionStorage.setItem('currentTicketId', ticket.id);
-            window.location.href = '/hr/ticket.html';
+            window.location.href = `/hr/ticket.html?id=${ticket.id}`;
         });
 
         tbody.appendChild(tr);
@@ -344,6 +358,7 @@ async function assignTicket(button) {
         loadCasesTable();
         loadRecentCases();
         updateNotificationCount();
+        createAssignmentTask(ticketId);
     }
 }
 
@@ -378,36 +393,83 @@ async function updateReassign(select) {
     } else {
         showToast('Ticket reassigned', 'success');
         loadCasesTable();
+        if (hrId) {
+            createAssignmentTask(ticketId, hrId);
+        }
     }
 }
 
 async function completeTask(taskId, button) {
+    // Optimistic update: disable button and mark as completed
+    const li = button.closest('.task-item');
+    li.classList.add('completed');
+    button.disabled = true;
+    button.textContent = 'Completing...';
+
     const { error } = await supabaseClient
         .from('tasks')
         .update({ status: 'completed' })
         .eq('id', taskId);
     if (error) {
+        // Revert on error
+        li.classList.remove('completed');
+        button.disabled = false;
+        button.textContent = 'Complete';
         showToast('Error completing task: ' + error.message, 'error');
     } else {
-        const li = button.closest('.task-item');
-        li.classList.add('completed');
-        button.textContent = 'Completed';
         showToast('Task completed', 'success');
+        // Remove from dashboard list if it's the dashboard
+        if (li.closest('#dashboard-task-list')) {
+            li.remove();
+        } else {
+            // Keep in full list but mark as completed
+            button.textContent = 'Completed';
+        }
         updateNotificationCount();
     }
 }
 
 async function deleteTask(taskId, button) {
     if (!confirm('Delete this task?')) return;
+    const li = button.closest('.task-item');
+    li.style.opacity = '0.5';
+    button.disabled = true;
+
     const { error } = await supabaseClient
         .from('tasks')
         .delete()
         .eq('id', taskId);
     if (error) {
+        li.style.opacity = '1';
+        button.disabled = false;
         showToast('Error deleting task: ' + error.message, 'error');
     } else {
-        button.closest('.task-item').remove();
+        li.remove();
         showToast('Task deleted', 'success');
+    }
+}
+
+// Helper to create a task for a ticket assignment
+async function createAssignmentTask(ticketId, assigneeId = null) {
+    const hrId = assigneeId || currentHrId;
+    if (!hrId) return;
+    try {
+        const { data: ticket } = await supabaseClient
+            .from('tickets')
+            .select('issue_summary, employees(full_name)')
+            .eq('id', ticketId)
+            .single();
+        const taskTitle = `Handle ticket #${ticketId.substr(0,8)} - ${ticket?.issue_summary || 'No summary'}`;
+        await supabaseClient
+            .from('tasks')
+            .insert({
+                title: taskTitle,
+                description: `Ticket assigned to you. Employee: ${ticket?.employees?.full_name || 'Unknown'}`,
+                status: 'pending',
+                assigned_to: hrId
+            });
+    } catch (err) {
+        console.error('Task creation failed:', err);
     }
 }
 
@@ -445,6 +507,11 @@ function viewEmployeeProfile(id, name, email, position) {
                     <td>${escapeHTML(t.issue_summary || '')}</td>
                     <td>${formatDate(t.created_at)}</td>
                 `;
+                // 🔗 Navigate with ticket ID in URL
+                tr.onclick = () => {
+                    closeModal('emp-profile-modal');
+                    window.location.href = `/hr/ticket.html?id=${t.id}`;
+                };
                 tbody.appendChild(tr);
             });
         });
@@ -476,7 +543,6 @@ function navigate(viewId) {
         loadFullTasks();
         updateNotificationCount();
     } else if (viewId === 'view-analytics') {
-        // Load analytics with default filter (e.g., 'month')
         loadEnhancedAnalytics('month');
     }
 }
@@ -631,8 +697,7 @@ async function performSearch(query) {
             div.className = 'search-item';
             div.textContent = `📋 ${ticket.issue_summary || 'Ticket'} (${ticket.id.substr(0,8)})`;
             div.onclick = () => {
-                sessionStorage.setItem('currentTicketId', ticket.id);
-                window.location.href = '/hr/ticket.html';
+                window.location.href = `/hr/ticket.html?id=${ticket.id}`;
             };
             resultsDiv.appendChild(div);
         });
@@ -643,8 +708,7 @@ async function performSearch(query) {
             div.className = 'search-item';
             div.textContent = `🔍 ID: ${ticket.id.substr(0,8)} – ${ticket.issue_summary || 'No summary'}`;
             div.onclick = () => {
-                sessionStorage.setItem('currentTicketId', ticket.id);
-                window.location.href = '/hr/ticket.html';
+                window.location.href = `/hr/ticket.html?id=${ticket.id}`;
             };
             resultsDiv.appendChild(div);
         });
@@ -952,7 +1016,6 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
                 }
             });
         } else if (responseDays.length === 0) {
-            // Optionally display a message on the canvas
             const canvas = document.getElementById('responseTimeChart');
             if (canvas) {
                 const ctx = canvas.getContext('2d');
@@ -1098,7 +1161,16 @@ document.getElementById('quarter-select').addEventListener('change', function() 
 });
 
 function exportAnalyticsCSV() {
-    supabaseClient.from('tickets').select('*').then(({ data, error }) => {
+    // Use the current filter from analytics
+    const filter = currentAnalyticsFilter;
+    const start = getStartDateFromFilter(filter);
+    const end = new Date().toISOString().split('T')[0];
+
+    let query = supabaseClient.from('tickets').select('*');
+    if (start) {
+        query = query.gte('created_at', start).lte('created_at', end);
+    }
+    query.then(({ data, error }) => {
         if (error) {
             showToast('Error exporting', 'error');
             return;
@@ -1122,6 +1194,17 @@ function exportAnalyticsCSV() {
         a.click();
         URL.revokeObjectURL(url);
     });
+}
+
+function getStartDateFromFilter(filter) {
+    const now = new Date();
+    if (filter === 'day') return new Date(now.setHours(0,0,0,0)).toISOString().split('T')[0];
+    if (filter === 'week') {
+        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+        return new Date(firstDay.setHours(0,0,0,0)).toISOString().split('T')[0];
+    }
+    if (filter === 'month') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    return null;
 }
 
 // ==================== MEETING DOCUMENTS ====================
@@ -1270,6 +1353,11 @@ function openImportCSVModal() {
 }
 
 async function processCSVUpload() {
+    // Load PapaParse dynamically if not present
+    if (!window.Papa) {
+        await loadPapaParse();
+    }
+
     const fileInput = document.getElementById('csv-upload');
     const file = fileInput.files[0];
     if (!file) {
@@ -1277,82 +1365,91 @@ async function processCSVUpload() {
         return;
     }
 
-    const text = await file.text();
-    const rows = text.split('\n').map(row => row.split(',').map(cell => cell.trim().replace(/^"|"$/g, '')));
-    if (rows.length < 2) {
-        alert('CSV file is empty.');
-        return;
-    }
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+            const headers = results.meta.fields.map(h => h.toLowerCase().replace(/\s+/g, '_'));
+            const required = ['email', 'full_name'];
+            const missing = required.filter(r => !headers.includes(r));
+            if (missing.length) {
+                alert(`CSV missing required columns: ${missing.join(', ')}`);
+                return;
+            }
 
-    const headers = rows[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
-    const required = ['email', 'full_name'];
-    const missing = required.filter(r => !headers.includes(r));
-    if (missing.length) {
-        alert(`CSV missing required columns: ${missing.join(', ')}`);
-        return;
-    }
+            const data = results.data;
+            if (!data.length) {
+                alert('No valid data rows found.');
+                return;
+            }
 
-    const emailIdx = headers.indexOf('email');
-    const nameIdx = headers.indexOf('full_name');
-    const positionIdx = headers.indexOf('position');
-    const deptIdx = headers.indexOf('department');
-    const phoneIdx = headers.indexOf('phone');
-    const maritalIdx = headers.indexOf('marital_status');
-    const startIdx = headers.indexOf('start_date');
+            // Preview
+            let previewHtml = '<h4>Preview (first 5 rows):</h4><table class="data-table"><thead><tr>';
+            results.meta.fields.forEach(h => previewHtml += `<th>${h}</th>`);
+            previewHtml += '</tr></thead><tbody>';
+            data.slice(0,5).forEach(row => {
+                previewHtml += '<tr>' + results.meta.fields.map(f => `<td>${escapeHTML(row[f] || '')}</td>`).join('') + '</tr>';
+            });
+            previewHtml += '</tbody></table>';
+            previewHtml += `<p>Total rows to process: ${data.length}</p>`;
+            document.getElementById('import-preview').innerHTML = previewHtml;
 
-    const data = rows.slice(1).filter(row => row.length === headers.length && row[emailIdx]?.trim());
-    if (!data.length) {
-        alert('No valid data rows found.');
-        return;
-    }
+            if (!confirm(`Proceed with import? This will update existing employees (by email) and insert new ones.`)) return;
 
-    let previewHtml = '<h4>Preview (first 5 rows):</h4><table class="data-table"><thead><tr>';
-    headers.forEach(h => previewHtml += `<th>${h}</th>`);
-    previewHtml += '</tr></thead><tbody>';
-    data.slice(0,5).forEach(row => {
-        previewHtml += '<tr>' + row.map(cell => `<td>${escapeHTML(cell)}</td>`).join('') + '</tr>';
+            let success = 0, errors = [];
+            for (const row of data) {
+                const record = {
+                    email: row.email || row.Email,
+                    full_name: row.full_name || row['Full Name'],
+                    position: row.position || row.Position || null,
+                    department: row.department || row.Department || null,
+                    phone: row.phone || row.Phone || null,
+                    marital_status: row.marital_status || row['Marital Status'] || null,
+                    start_date: row.start_date || row['Start Date'] || null
+                };
+                if (!record.email || !record.email.includes('@')) {
+                    errors.push(`Invalid or missing email: ${record.email}`);
+                    continue;
+                }
+                const { error } = await supabaseClient
+                    .from('employees')
+                    .upsert(record, { onConflict: 'email' });
+                if (error) {
+                    errors.push(`Error updating ${record.email}: ${error.message}`);
+                } else {
+                    success++;
+                }
+            }
+
+            if (errors.length) {
+                console.error('Import errors:', errors);
+                showToast(`Import completed with ${errors.length} errors. Check console.`, 'error');
+            } else {
+                showToast(`Import successful: ${success} records processed.`, 'success');
+            }
+            closeModal('import-csv-modal');
+            if (!document.getElementById('view-employees').classList.contains('hidden')) {
+                loadEmployeeDirectory();
+            }
+        },
+        error: (err) => {
+            alert('CSV parsing failed: ' + err.message);
+        }
     });
-    previewHtml += '</tbody></table>';
-    previewHtml += `<p>Total rows to process: ${data.length}</p>`;
-    document.getElementById('import-preview').innerHTML = previewHtml;
+}
 
-    if (!confirm(`Proceed with import? This will update existing employees (by email) and insert new ones.`)) return;
-
-    let success = 0, errors = [];
-    for (const row of data) {
-        const record = {
-            email: row[emailIdx],
-            full_name: row[nameIdx] || '',
-            position: positionIdx >= 0 ? row[positionIdx] || null : null,
-            department: deptIdx >= 0 ? row[deptIdx] || null : null,
-            phone: phoneIdx >= 0 ? row[phoneIdx] || null : null,
-            marital_status: maritalIdx >= 0 ? row[maritalIdx] || null : null,
-            start_date: startIdx >= 0 ? row[startIdx] || null : null
-        };
-        if (!record.email.includes('@')) {
-            errors.push(`Invalid email: ${record.email}`);
-            continue;
+function loadPapaParse() {
+    return new Promise((resolve, reject) => {
+        if (window.Papa) {
+            resolve(window.Papa);
+            return;
         }
-        const { error } = await supabaseClient
-            .from('employees')
-            .upsert(record, { onConflict: 'email' });
-        if (error) {
-            errors.push(`Error updating ${record.email}: ${error.message}`);
-        } else {
-            success++;
-        }
-    }
-
-    if (errors.length) {
-        console.error('Import errors:', errors);
-        showToast(`Import completed with ${errors.length} errors. Check console.`, 'error');
-    } else {
-        showToast(`Import successful: ${success} records processed.`, 'success');
-    }
-    closeModal('import-csv-modal');
-    if (!document.getElementById('view-employees').classList.contains('hidden')) {
-        loadEmployeeDirectory();
-    }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
+        script.onload = () => resolve(window.Papa);
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
 }
 
 // ==================== NOTIFICATION FUNCTIONS ====================
@@ -1379,7 +1476,7 @@ async function loadNotificationItems() {
             html += '<div style="padding: 8px 15px; background: #f0f9ff; font-weight: 600;">Open Tickets</div>';
             openTickets.forEach(t => {
                 html += `
-                    <a href="/hr/ticket.html" class="dropdown-item" onclick="sessionStorage.setItem('currentTicketId', '${t.id}'); return true;">
+                    <a href="/hr/ticket.html?id=${t.id}" class="dropdown-item">
                         🎫 ${t.issue_summary?.substring(0,30) || 'Ticket'} - ${t.employees?.full_name || 'Unknown'}
                     </a>
                 `;
@@ -1390,7 +1487,7 @@ async function loadNotificationItems() {
             html += '<div style="padding: 8px 15px; background: #f0f9ff; font-weight: 600;">Pending Tasks</div>';
             pendingTasks.forEach(t => {
                 html += `
-                    <a href="/hr/tasks.html" class="dropdown-item" onclick="navigate('view-tasks'); return false;">
+                    <a href="/hr/dashboard.html" class="dropdown-item" onclick="navigate('view-tasks'); return false;">
                         ✅ ${t.title}
                     </a>
                 `;
@@ -1699,7 +1796,6 @@ async function init() {
             if (filter === 'all') {
                 navigate('view-analytics');
             } else {
-                // Remove active class from all filter buttons (optional styling)
                 document.querySelectorAll('.chart-filter-btn').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 currentChartFilter = filter;
@@ -1715,7 +1811,6 @@ async function init() {
     document.querySelectorAll('.analytics-filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const filter = e.target.dataset.filter;
-            // Remove active class from all analytics filter buttons
             document.querySelectorAll('.analytics-filter-btn').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             currentAnalyticsFilter = filter;
