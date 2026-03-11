@@ -11,12 +11,11 @@ let loadingTimeout = null;
 
 // Helper to escape HTML
 function escapeHTML(str) {
-    if (!str) return '';
-    return str.replace(/[&<>\"]/g, function(m) {
+    return str.replace(/[&<>"]/g, function(m) {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
-        if (m === '\"') return '&quot;';
+        if (m === '"') return '&quot;';
         return m;
     });
 }
@@ -24,9 +23,7 @@ function escapeHTML(str) {
 // Format bot messages (convert markdown-like syntax to HTML)
 function formatBotMessage(text) {
     if (!text) return text;
-    // Bold
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Lists
     const lines = text.split('\n');
     let inList = false;
     let html = '';
@@ -43,35 +40,31 @@ function formatBotMessage(text) {
                 html += '</ul>';
                 inList = false;
             }
-            html += trimmed ? `<p>${trimmed}</p>` : '<br>';
+            html += line + '<br>';
         }
     }
     if (inList) html += '</ul>';
     return html;
 }
 
+// Display a message in the chat window
 function displayMessage(msg) {
     const messagesDiv = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = `message ${msg.sender_type}`;
-    
-    let contentHtml = '';
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${msg.sender_type}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
     if (msg.sender_type === 'bot') {
-        contentHtml = formatBotMessage(msg.content);
+        bubble.innerHTML = formatBotMessage(escapeHTML(msg.content));
     } else {
-        contentHtml = escapeHTML(msg.content);
+        bubble.textContent = escapeHTML(msg.content);
     }
-
-    let senderName = '';
-    if (msg.sender_type === 'employee') senderName = 'You';
-    else if (msg.sender_type === 'hr') senderName = 'HR Support';
-    else senderName = 'AI Assistant';
-
-    div.innerHTML = `<div class="sender-name">${senderName}</div>${contentHtml}`;
-    messagesDiv.appendChild(div);
+    msgDiv.appendChild(bubble);
+    messagesDiv.appendChild(msgDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
+// Load all previous messages for this ticket
 async function loadMessages() {
     const { data: messages, error } = await supabaseClient
         .from('messages')
@@ -83,132 +76,243 @@ async function loadMessages() {
         console.error('Error loading messages:', error);
         return;
     }
-    document.getElementById('messages').innerHTML = '';
     messages.forEach(displayMessage);
 }
 
+// Show typing indicator
+function showTyping(message = 'Thinking') {
+    const messagesDiv = document.getElementById('messages');
+    removeTyping();
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'typing-indicator';
+    typingDiv.id = 'typing-indicator';
+    typingDiv.innerHTML = '<span></span><span></span><span></span>';
+    messagesDiv.appendChild(typingDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    loadingTimeout = setTimeout(() => {
+        const typing = document.getElementById('typing-indicator');
+        if (typing) {
+            // Could update text if we had a span for it
+        }
+    }, 5000);
+}
+
+// Remove typing indicator
+function removeTyping() {
+    if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+        loadingTimeout = null;
+    }
+    const typing = document.getElementById('typing-indicator');
+    if (typing) typing.remove();
+}
+
+// Send a message (employee -> bot)
 async function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text) return;
-
     input.value = '';
-    
-    // 1. Save to Supabase (Employee Message)
-    const { error: dbError } = await supabaseClient
+    input.disabled = true;
+
+    showTyping();
+
+    const { data: empMsg, error: msgError } = await supabaseClient
         .from('messages')
         .insert({
             ticket_id: currentTicketId,
             sender_type: 'employee',
             content: text
-        });
+        })
+        .select()
+        .single();
 
-    if (dbError) {
-        console.error('Error saving message:', dbError);
+    if (msgError) {
+        console.error('Error saving message:', msgError);
+        removeTyping();
+        input.disabled = false;
         return;
     }
 
-    // 2. If bot is active, call Railway API
-    if (botActive) {
-        // Show loading indicator
-        const messagesDiv = document.getElementById('messages');
-        const loadingDiv = document.createElement('div');
-        loadingDiv.id = 'bot-loading';
-        loadingDiv.className = 'message bot';
-        loadingDiv.innerHTML = '<div class="sender-name">AI Assistant</div><div class="typing-indicator"><span></span><span></span><span></span></div>';
-        messagesDiv.appendChild(loadingDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    displayMessage(empMsg);
 
+    if (botActive) {
         try {
             const response = await fetch(botApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    question: text,
-                    ticket_id: currentTicketId
-                })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: text, ticket_id: currentTicketId })
             });
+            if (!response.ok) throw new Error('Bot API error');
             const data = await response.json();
-            // Success response will be handled by the real-time listener if the bot saves to DB
-        } catch (err) {
-            console.error('Bot API Error:', err);
-            if (document.getElementById('bot-loading')) document.getElementById('bot-loading').remove();
+
+            removeTyping();
+
+            const { data: botMsg, error: botError } = await supabaseClient
+                .from('messages')
+                .insert({
+                    ticket_id: currentTicketId,
+                    sender_type: 'bot',
+                    content: data.answer
+                })
+                .select()
+                .single();
+
+            if (botError) {
+                console.error('Error saving bot message:', botError);
+            } else {
+                displayMessage(botMsg);
+            }
+
+        } catch (error) {
+            console.error('Bot error:', error);
+            removeTyping();
+            const { data: errMsg } = await supabaseClient
+                .from('messages')
+                .insert({
+                    ticket_id: currentTicketId,
+                    sender_type: 'bot',
+                    content: '⚠️ Sorry, I encountered an error. Please try again or escalate to HR.'
+                })
+                .select()
+                .single();
+            if (errMsg) displayMessage(errMsg);
         }
+    } else {
+        removeTyping();
     }
+
+    input.disabled = false;
+    input.focus();
 }
 
+// Escalate to HR (now sends email notification)
 async function escalateToHR() {
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ status: 'escalated', bot_active: false })
+        .update({ priority: 'high' })
         .eq('id', currentTicketId);
 
     if (error) {
-        alert('Could not escalate: ' + error.message);
-    } else {
-        botActive = false;
-        displayMessage({
-            sender_type: 'bot',
-            content: 'Your ticket has been escalated. A human HR representative will be with you shortly.'
-        });
-    }
-}
-
-async function init() {
-    currentTicketId = sessionStorage.getItem('currentTicketId');
-    if (!currentTicketId) {
-        window.location.href = '/employee/tickets.html';
+        console.error('Error escalating:', error);
+        alert('Could not escalate. Please try again.');
         return;
     }
 
+    // Notify HR of escalation – link now points to live Vercel domain
+    const hrEmail = 'jcjj.1104@gmail.com'; // Replace with actual HR email later
+    const ticketLink = `${vercelUrl}/hr/ticket.html?id=${currentTicketId}`;
+    const emailPayload = {
+        to: hrEmail,
+        subject: `Ticket escalated by ${employeeName}`,
+        html: `<p>A ticket has been escalated:</p>
+               <p><strong>Employee:</strong> ${employeeName}</p>
+               <p><strong>Ticket ID:</strong> ${currentTicketId}</p>
+               <p><a href="${ticketLink}">View Ticket</a></p>`
+    };
+    try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(emailPayload)
+        });
+        if (!response.ok) console.error('Escalation email failed', await response.text());
+    } catch (err) {
+        console.error('Error sending escalation email:', err);
+    }
+
+    const { data: sysMsg } = await supabaseClient
+        .from('messages')
+        .insert({
+            ticket_id: currentTicketId,
+            sender_type: 'bot',
+            content: 'Your request has been escalated to HR. Someone will contact you soon.'
+        })
+        .select()
+        .single();
+    if (sysMsg) displayMessage(sysMsg);
+
+    document.getElementById('escalate-btn').disabled = true;
+    document.getElementById('escalate-btn').textContent = 'Escalated';
+}
+
+// Initialize the page
+async function init() {
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) {
         window.location.href = '/';
         return;
     }
 
-    const { data: emp } = await supabaseClient
+    const { data: employee, error: empError } = await supabaseClient
         .from('employees')
         .select('id, full_name')
         .eq('auth_id', user.id)
         .single();
 
-    employeeId = emp.id;
-    employeeName = emp.full_name;
+    if (empError || !employee) {
+        console.error('Not an employee:', empError);
+        alert('You are not registered as an employee. Please contact HR.');
+        return;
+    }
 
-    // Load initial ticket state
-    const { data: ticket } = await supabaseClient
+    employeeId = employee.id;
+    employeeName = employee.full_name;
+
+    currentTicketId = sessionStorage.getItem('currentTicketId');
+    if (!currentTicketId) {
+        alert('No ticket selected. Redirecting to tickets list.');
+        window.location.href = '/employee/tickets.html';
+        return;
+    }
+    sessionStorage.removeItem('currentTicketId');
+
+    const { data: ticketData, error: ticketError } = await supabaseClient
         .from('tickets')
         .select('bot_active')
         .eq('id', currentTicketId)
         .single();
-    if (ticket) botActive = ticket.bot_active;
 
-    loadMessages();
+    if (ticketError) {
+        console.error('Error loading ticket:', ticketError);
+        alert('Could not load ticket.');
+        window.location.href = '/employee/tickets.html';
+        return;
+    }
 
-    // Listen for new messages
+    botActive = ticketData?.bot_active ?? true;
+
+    await loadMessages();
+
     supabaseClient
-        .channel(`public:messages:ticket_id=eq.${currentTicketId}`)
-        .on('postgres_changes', { 
-            event: 'INSERT', 
-            schema: 'public', 
-            table: 'messages', 
-            filter: `ticket_id=eq.${currentTicketId}` 
+        .channel(`ticket-${currentTicketId}`)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `ticket_id=eq.${currentTicketId}`
         }, (payload) => {
-            if (document.getElementById('bot-loading')) document.getElementById('bot-loading').remove();
             displayMessage(payload.new);
         })
         .subscribe();
 
     supabaseClient
-        .channel(`public:tickets:id=eq.${currentTicketId}`)
+        .channel(`ticket-${currentTicketId}-status`)
         .on('postgres_changes', {
             event: 'UPDATE',
             schema: 'public',
             table: 'tickets',
             filter: `id=eq.${currentTicketId}`
         }, (payload) => {
-            botActive = payload.new.bot_active;
+            const newBotActive = payload.new.bot_active;
+            if (botActive && !newBotActive) {
+                displayMessage({
+                    sender_type: 'bot',
+                    content: 'HR has joined the conversation. They will respond to you directly.'
+                });
+            }
+            botActive = newBotActive;
         })
         .subscribe();
 
