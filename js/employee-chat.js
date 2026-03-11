@@ -1,15 +1,16 @@
-// employee-chat.js
+// employee-chat.js – upgraded with env variable for bot API, typing indicator fix
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
-const vercelUrl = 'https://hr-support-hub.vercel.app'; // Your live frontend URL
+const vercelUrl = 'https://hr-support-hub.vercel.app';
+
+// Bot API URL from environment (injected via script tag or global)
+const botApiUrl = window.BOT_API_URL || 'https://hr-chatbot-production.up.railway.app/chat';
 
 let currentTicketId = null;
 let employeeId = null;
 let employeeName = '';
-let botApiUrl = 'https://hr-chatbot-production.up.railway.app/chat';
 let botActive = true;
 let loadingTimeout = null;
 
-// Helper to escape HTML
 function escapeHTML(str) {
     return str.replace(/[&<>"]/g, function(m) {
         if (m === '&') return '&amp;';
@@ -20,7 +21,6 @@ function escapeHTML(str) {
     });
 }
 
-// Format bot messages (convert markdown-like syntax to HTML)
 function formatBotMessage(text) {
     if (!text) return text;
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -47,7 +47,6 @@ function formatBotMessage(text) {
     return html;
 }
 
-// Display a message in the chat window
 function displayMessage(msg) {
     const messagesDiv = document.getElementById('messages');
     const msgDiv = document.createElement('div');
@@ -64,7 +63,6 @@ function displayMessage(msg) {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// Load all previous messages for this ticket
 async function loadMessages() {
     const { data: messages, error } = await supabaseClient
         .from('messages')
@@ -79,7 +77,6 @@ async function loadMessages() {
     messages.forEach(displayMessage);
 }
 
-// Show typing indicator
 function showTyping(message = 'Thinking') {
     const messagesDiv = document.getElementById('messages');
     removeTyping();
@@ -90,15 +87,17 @@ function showTyping(message = 'Thinking') {
     messagesDiv.appendChild(typingDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
+    // If bot takes more than 10 seconds, show a fallback message
     loadingTimeout = setTimeout(() => {
-        const typing = document.getElementById('typing-indicator');
-        if (typing) {
-            // Could update text if we had a span for it
-        }
-    }, 5000);
+        removeTyping();
+        const fallbackMsg = {
+            sender_type: 'bot',
+            content: '⚠️ The assistant is taking longer than expected. Please wait or escalate to HR.'
+        };
+        displayMessage(fallbackMsg);
+    }, 10000);
 }
 
-// Remove typing indicator
 function removeTyping() {
     if (loadingTimeout) {
         clearTimeout(loadingTimeout);
@@ -108,7 +107,6 @@ function removeTyping() {
     if (typing) typing.remove();
 }
 
-// Send a message (employee -> bot)
 async function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
@@ -132,6 +130,7 @@ async function sendMessage() {
         console.error('Error saving message:', msgError);
         removeTyping();
         input.disabled = false;
+        showToast('Failed to send message', 'error');
         return;
     }
 
@@ -140,9 +139,9 @@ async function sendMessage() {
     if (botActive) {
         try {
             const response = await fetch(botApiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: text, ticket_id: currentTicketId })
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: text, ticket_id: currentTicketId })
             });
             if (!response.ok) throw new Error('Bot API error');
             const data = await response.json();
@@ -187,7 +186,6 @@ async function sendMessage() {
     input.focus();
 }
 
-// Escalate to HR (now sends email notification)
 async function escalateToHR() {
     const { error } = await supabaseClient
         .from('tickets')
@@ -200,8 +198,7 @@ async function escalateToHR() {
         return;
     }
 
-    // Notify HR of escalation – link now points to live Vercel domain
-    const hrEmail = 'jcjj.1104@gmail.com'; // Replace with actual HR email later
+    const hrEmail = 'jcjj.1104@gmail.com'; // Should be env variable
     const ticketLink = `${vercelUrl}/hr/ticket.html?id=${currentTicketId}`;
     const emailPayload = {
         to: hrEmail,
@@ -237,7 +234,6 @@ async function escalateToHR() {
     document.getElementById('escalate-btn').textContent = 'Escalated';
 }
 
-// Initialize the page
 async function init() {
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) {
