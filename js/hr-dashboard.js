@@ -773,119 +773,190 @@ async function addEmployee() {
     }
 }
 
-// ==================== Analytics Functions ====================
+// ==================== Analytics Functions (Enhanced) ====================
 let ticketsChart, categoryChart, ratingChart;
 
 async function loadAnalytics(startDate = null, endDate = null) {
-    let query = supabaseClient.from('tickets').select('*');
-    if (startDate && endDate) {
-        query = query.gte('created_at', startDate).lte('created_at', endDate);
-    }
-    const { data: tickets, error } = await query;
-    if (error) {
-        showToast('Error loading analytics', 'error');
-        console.error(error);
-        return;
-    }
+    const kpis = ['total-tickets', 'open-tickets', 'avg-resolution', 'avg-response', 'avg-rating'];
+    kpis.forEach(id => document.getElementById(id).textContent = '…'); // show loading
 
-    const total = tickets.length;
-    const open = tickets.filter(t => t.status === 'open').length;
-    const rated = tickets.filter(t => t.rating);
-    const avgRating = rated.length ? (rated.reduce((acc, t) => acc + t.rating, 0) / rated.length).toFixed(1) : 'N/A';
-
-    let totalResponseDays = 0, responseCount = 0;
-    let totalResolutionDays = 0, resolutionCount = 0;
-    tickets.forEach(t => {
-        if (t.first_hr_response_at && t.created_at) {
-            const responseTime = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60*24);
-            totalResponseDays += responseTime;
-            responseCount++;
+    try {
+        let query = supabaseClient.from('tickets').select('*');
+        if (startDate && endDate) {
+            query = query.gte('created_at', startDate).lte('created_at', endDate);
         }
-        if (t.resolved_at && t.created_at) {
-            const resolutionTime = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24);
-            totalResolutionDays += resolutionTime;
-            resolutionCount++;
+        const { data: tickets, error } = await query;
+        if (error) throw error;
+
+        const total = tickets.length;
+        const open = tickets.filter(t => t.status === 'open').length;
+        const rated = tickets.filter(t => t.rating !== null && t.rating !== -1);
+        const avgRating = rated.length ? (rated.reduce((acc, t) => acc + t.rating, 0) / rated.length).toFixed(1) : 'N/A';
+
+        let totalResponseDays = 0, responseCount = 0;
+        let totalResolutionDays = 0, resolutionCount = 0;
+        tickets.forEach(t => {
+            if (t.first_hr_response_at && t.created_at) {
+                const responseTime = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60*24);
+                totalResponseDays += responseTime;
+                responseCount++;
+            }
+            if (t.resolved_at && t.created_at) {
+                const resolutionTime = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24);
+                totalResolutionDays += resolutionTime;
+                resolutionCount++;
+            }
+        });
+        const avgResponse = responseCount ? (totalResponseDays / responseCount).toFixed(1) : 'N/A';
+        const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
+
+        document.getElementById('total-tickets').textContent = total;
+        document.getElementById('open-tickets').textContent = open;
+        document.getElementById('avg-resolution').textContent = avgResolution;
+        document.getElementById('avg-response').textContent = avgResponse;
+        document.getElementById('avg-rating').textContent = avgRating;
+
+        // Tickets over time (daily)
+        const dailyCounts = {};
+        tickets.forEach(t => {
+            const day = t.created_at.slice(0,10);
+            dailyCounts[day] = (dailyCounts[day] || 0) + 1;
+        });
+        const days = Object.keys(dailyCounts).sort();
+        const counts = days.map(d => dailyCounts[d]);
+
+        if (ticketsChart) ticketsChart.destroy();
+        const ctxTickets = document.getElementById('ticketsChart')?.getContext('2d');
+        if (ctxTickets) {
+            ticketsChart = new Chart(ctxTickets, {
+                type: 'line',
+                data: { 
+                    labels: days, 
+                    datasets: [{ 
+                        label: 'Tickets Created', 
+                        data: counts, 
+                        borderColor: '#0a5b8c', 
+                        backgroundColor: 'rgba(10,91,140,0.1)',
+                        tension: 0.2
+                    }] 
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true },
+                        tooltip: { enabled: true }
+                    }
+                }
+            });
         }
-    });
-    const avgResponse = responseCount ? (totalResponseDays / responseCount).toFixed(1) : 'N/A';
-    const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
 
-    document.getElementById('total-tickets').textContent = total;
-    document.getElementById('open-tickets').textContent = open;
-    document.getElementById('avg-resolution').textContent = avgResolution;
-    document.getElementById('avg-response').textContent = avgResponse;
-    document.getElementById('avg-rating').textContent = avgRating;
+        // Category breakdown
+        const categories = {};
+        tickets.forEach(t => {
+            const cat = t.category || 'Uncategorized';
+            categories[cat] = (categories[cat] || 0) + 1;
+        });
+        const catLabels = Object.keys(categories);
+        const catData = Object.values(categories);
 
-    const dailyCounts = {};
-    tickets.forEach(t => {
-        const day = t.created_at.slice(0,10);
-        dailyCounts[day] = (dailyCounts[day] || 0) + 1;
-    });
-    const days = Object.keys(dailyCounts).sort();
-    const counts = days.map(d => dailyCounts[d]);
+        if (categoryChart) categoryChart.destroy();
+        const ctxCategory = document.getElementById('categoryChart')?.getContext('2d');
+        if (ctxCategory) {
+            categoryChart = new Chart(ctxCategory, {
+                type: 'pie',
+                data: { 
+                    labels: catLabels, 
+                    datasets: [{ 
+                        data: catData, 
+                        backgroundColor: ['#0a5b8c', '#ffc107', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#94a3b8'] 
+                    }] 
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+        }
 
-    if (ticketsChart) ticketsChart.destroy();
-    ticketsChart = new Chart(document.getElementById('ticketsChart'), {
-        type: 'line',
-        data: { labels: days, datasets: [{ label: 'Tickets Created', data: counts, borderColor: '#0a5b8c', backgroundColor: 'rgba(10,91,140,0.1)' }] }
-    });
+        // Satisfaction trend (weekly)
+        const weekly = {};
+        tickets.filter(t => t.rating !== null && t.rating !== -1).forEach(t => {
+            const date = new Date(t.created_at);
+            const week = `${date.getFullYear()}-W${Math.ceil((date.getDate() + (new Date(date.getFullYear(), date.getMonth(), 1).getDay()))/7)}`;
+            if (!weekly[week]) { weekly[week] = { sum: 0, count: 0 }; }
+            weekly[week].sum += t.rating;
+            weekly[week].count++;
+        });
+        const weeks = Object.keys(weekly).sort();
+        const avgRatings = weeks.map(w => (weekly[w].sum / weekly[w].count).toFixed(1));
 
-    const categories = {};
-    tickets.forEach(t => {
-        const cat = t.category || 'Uncategorized';
-        categories[cat] = (categories[cat] || 0) + 1;
-    });
-    const catLabels = Object.keys(categories);
-    const catData = Object.values(categories);
+        if (ratingChart) ratingChart.destroy();
+        const ctxRating = document.getElementById('ratingChart')?.getContext('2d');
+        if (ctxRating) {
+            ratingChart = new Chart(ctxRating, {
+                type: 'line',
+                data: { 
+                    labels: weeks, 
+                    datasets: [{ 
+                        label: 'Avg Rating', 
+                        data: avgRatings, 
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.1)',
+                        tension: 0.2
+                    }] 
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    scales: { y: { min: 1, max: 5 } }
+                }
+            });
+        }
 
-    if (categoryChart) categoryChart.destroy();
-    categoryChart = new Chart(document.getElementById('categoryChart'), {
-        type: 'pie',
-        data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: ['#0a5b8c', '#ffc107', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'] }] }
-    });
+        // Raw data table
+        const tbody = document.querySelector('#analytics-raw-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            tickets.slice(0, 50).forEach(t => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${t.id.substr(0,8)}</td>
+                    <td>${t.category || 'Uncategorized'}</td>
+                    <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                    <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                    <td>${t.rating || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
 
-    const weekly = {};
-    tickets.filter(t => t.rating).forEach(t => {
-        const date = new Date(t.created_at);
-        const week = `${date.getFullYear()}-W${Math.ceil((date.getDate() + (new Date(date.getFullYear(), date.getMonth(), 1).getDay()))/7)}`;
-        if (!weekly[week]) { weekly[week] = { sum: 0, count: 0 }; }
-        weekly[week].sum += t.rating;
-        weekly[week].count++;
-    });
-    const weeks = Object.keys(weekly).sort();
-    const avgRatings = weeks.map(w => (weekly[w].sum / weekly[w].count).toFixed(1));
-
-    if (ratingChart) ratingChart.destroy();
-    ratingChart = new Chart(document.getElementById('ratingChart'), {
-        type: 'line',
-        data: { labels: weeks, datasets: [{ label: 'Avg Rating', data: avgRatings, borderColor: '#10b981' }] }
-    });
-
-    const tbody = document.querySelector('#analytics-raw-table tbody');
-    tbody.innerHTML = '';
-    tickets.slice(0, 50).forEach(t => {
-        const row = document.createElement('tr');
-        row.innerHTML = `<td>${t.id.substr(0,8)}</td><td>${t.category || 'Uncategorized'}</td><td><span class="status-badge status-${t.status}">${t.status}</span></td><td>${new Date(t.created_at).toLocaleDateString()}</td><td>${t.rating || '-'}</td>`;
-        tbody.appendChild(row);
-    });
+    } catch (err) {
+        console.error('Analytics error:', err);
+        showToast('Error loading analytics: ' + err.message, 'error');
+    }
 }
 
 function applyAnalyticsFilter() {
     const quarter = document.getElementById('quarter-select').value;
     const now = new Date();
+    const year = now.getFullYear();
     let start, end;
     if (quarter === 'Q1') {
-        start = new Date(now.getFullYear(), 0, 1);
-        end = new Date(now.getFullYear(), 2, 31);
+        start = new Date(year, 0, 1);
+        end = new Date(year, 2, 31);
     } else if (quarter === 'Q2') {
-        start = new Date(now.getFullYear(), 3, 1);
-        end = new Date(now.getFullYear(), 5, 30);
+        start = new Date(year, 3, 1);
+        end = new Date(year, 5, 30);
     } else if (quarter === 'Q3') {
-        start = new Date(now.getFullYear(), 6, 1);
-        end = new Date(now.getFullYear(), 8, 30);
+        start = new Date(year, 6, 1);
+        end = new Date(year, 8, 30);
     } else if (quarter === 'Q4') {
-        start = new Date(now.getFullYear(), 9, 1);
-        end = new Date(now.getFullYear(), 11, 31);
+        start = new Date(year, 9, 1);
+        end = new Date(year, 11, 31);
     } else {
         start = document.getElementById('start-date').value;
         end = document.getElementById('end-date').value;
@@ -893,25 +964,34 @@ function applyAnalyticsFilter() {
             alert('Please select custom dates');
             return;
         }
+        start = new Date(start).toISOString().split('T')[0];
+        end = new Date(end).toISOString().split('T')[0];
     }
     loadAnalytics(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
 }
 
 document.getElementById('quarter-select').addEventListener('change', function() {
-    if (this.value === 'custom') {
-        document.getElementById('start-date').style.display = 'inline-block';
-        document.getElementById('end-date').style.display = 'inline-block';
-    } else {
-        document.getElementById('start-date').style.display = 'none';
-        document.getElementById('end-date').style.display = 'none';
-    }
+    const custom = this.value === 'custom';
+    document.getElementById('start-date').style.display = custom ? 'inline-block' : 'none';
+    document.getElementById('end-date').style.display = custom ? 'inline-block' : 'none';
 });
 
 function exportAnalyticsCSV() {
     supabaseClient.from('tickets').select('*').then(({ data, error }) => {
-        if (error) return;
+        if (error) {
+            showToast('Error exporting', 'error');
+            return;
+        }
         const headers = ['ID','Category','Status','Created','Resolved','Rating','Feedback'];
-        const rows = data.map(t => [t.id, t.category || '', t.status, t.created_at, t.resolved_at || '', t.rating || '', t.feedback_comment || '']);
+        const rows = data.map(t => [
+            t.id,
+            t.category || '',
+            t.status,
+            t.created_at,
+            t.resolved_at || '',
+            t.rating !== null && t.rating !== -1 ? t.rating : '',
+            t.feedback_comment || ''
+        ]);
         let csv = headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
@@ -919,6 +999,7 @@ function exportAnalyticsCSV() {
         a.href = url;
         a.download = 'tickets_export.csv';
         a.click();
+        URL.revokeObjectURL(url);
     });
 }
 
