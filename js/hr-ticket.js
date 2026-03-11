@@ -81,6 +81,12 @@ async function loadTicket() {
         document.getElementById('employee-phone').textContent = emp.phone || 'Not provided';
         document.getElementById('employee-start').textContent = emp.start_date ? new Date(emp.start_date).toLocaleDateString() : 'N/A';
 
+        // Set category dropdown value
+        const categorySelect = document.getElementById('ticket-category');
+        if (categorySelect && ticket.category) {
+            categorySelect.value = ticket.category;
+        }
+
         const { data: messages, error: msgError } = await supabaseClient
             .from('messages')
             .select('*')
@@ -298,8 +304,9 @@ async function resolve() {
                     html: chatLogHtml
                 };
                 try {
+                    // Use supabaseUrl directly (already has https://)
                     const response = await fetch(
-                        `https://${supabaseUrl.replace('https://', '')}/functions/v1/send-email`,
+                        `${supabaseUrl}/functions/v1/send-email`,
                         {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -322,6 +329,23 @@ async function resolve() {
     } catch (err) {
         console.error('Unexpected error:', err);
         showToast('Unexpected error', 'error');
+    }
+}
+
+// New function to handle category dropdown changes
+async function updateCategory(newCategory) {
+    if (!currentTicketId) {
+        showToast('No ticket loaded', 'error');
+        return;
+    }
+    const { error } = await supabaseClient
+        .from('tickets')
+        .update({ category: newCategory })
+        .eq('id', currentTicketId);
+    if (error) {
+        showToast('Error updating category: ' + error.message, 'error');
+    } else {
+        showToast('Category updated', 'success');
     }
 }
 
@@ -464,6 +488,7 @@ async function init() {
 
 window.toggleNotes = toggleNotes;
 window.closeModal = closeModal;
+window.updateCategory = updateCategory; // expose the category update function
 
 init();
 
