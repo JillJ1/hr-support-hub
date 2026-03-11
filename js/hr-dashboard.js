@@ -1,9 +1,10 @@
-// hr-dashboard.js – COMPLETE UPGRADED VERSION with debug log
+// hr-dashboard.js – COMPLETE UPGRADED VERSION with all features
 // ==================== GLOBAL VARIABLES ====================
 let currentFilter = 'open';
 let currentHrId = null;
 let currentHrName = '';
 let allHrStaff = []; // Cache for HR staff list (fixes N+1)
+let currentHrIdForDocs = null; // for meeting docs
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
@@ -851,57 +852,46 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
     kpis.forEach(id => document.getElementById(id).textContent = '…');
 
     try {
-        // Determine date range based on filter
-        // Determine date range based on filter
-const now = new Date();
-let start, end;
-
-if (startDate && endDate) {
-    // Custom range: use as-is (already full ISO strings)
-    start = startDate;
-    end = endDate;
-} else {
-    switch (filter) {
-        case 'day':
-            // Full day from midnight to midnight (local, then convert to UTC)
-            start = new Date(now.setHours(0,0,0,0)).toISOString();
-            end = new Date(now.setHours(23,59,59,999)).toISOString();
-            break;
-
-        case 'week': {
-            // Start of current week (Sunday 00:00 local)
-            const firstDay = new Date(now);
-            firstDay.setDate(now.getDate() - now.getDay());
-            firstDay.setHours(0,0,0,0);
-            start = firstDay.toISOString();
-            // End of today (23:59:59.999 local)
-            const endToday = new Date(now);
-            endToday.setHours(23,59,59,999);
-            end = endToday.toISOString();
-            break;
+        // --- Date range determination (unchanged) ---
+        const now = new Date();
+        let start, end;
+        if (startDate && endDate) {
+            start = startDate;
+            end = endDate;
+        } else {
+            switch (filter) {
+                case 'day':
+                    start = new Date(now.setHours(0,0,0,0)).toISOString();
+                    end = new Date(now.setHours(23,59,59,999)).toISOString();
+                    break;
+                case 'week': {
+                    const firstDay = new Date(now);
+                    firstDay.setDate(now.getDate() - now.getDay());
+                    firstDay.setHours(0,0,0,0);
+                    start = firstDay.toISOString();
+                    const endToday = new Date(now);
+                    endToday.setHours(23,59,59,999);
+                    end = endToday.toISOString();
+                    break;
+                }
+                case 'month': {
+                    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                    firstOfMonth.setHours(0,0,0,0);
+                    start = firstOfMonth.toISOString();
+                    const endToday = new Date(now);
+                    endToday.setHours(23,59,59,999);
+                    end = endToday.toISOString();
+                    break;
+                }
+                case 'all':
+                default:
+                    start = null;
+                    end = null;
+                    break;
+            }
         }
 
-        case 'month': {
-            // First day of month at 00:00 local
-            const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            firstOfMonth.setHours(0,0,0,0);
-            start = firstOfMonth.toISOString();
-            // End of today (23:59:59.999 local)
-            const endToday = new Date(now);
-            endToday.setHours(23,59,59,999);
-            end = endToday.toISOString();
-            break;
-        }
-
-        case 'all':
-        default:
-            start = null;
-            end = null;
-            break;
-    }
-}
-
-        // Build base query
+        // Build base query for filtered tickets (used for charts and most KPIs)
         let query = supabaseClient.from('tickets').select('*');
         if (start && end) {
             query = query.gte('created_at', start).lte('created_at', end);
@@ -912,35 +902,51 @@ if (startDate && endDate) {
         // 🐞 DEBUG: Log the tickets to console
         console.log('Analytics tickets:', tickets);
 
-        // Update KPIs (reuse existing calculations)
-        const total = tickets.length;
-        const open = tickets.filter(t => t.status === 'open').length;
+        // --- Get total open tickets (filter‑independent) ---
+        const { count: totalOpen, error: openError } = await supabaseClient
+            .from('tickets')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'open');
+        if (openError) console.error('Error fetching open count:', openError);
+        const openNow = totalOpen || 0;
+
+        // --- Update KPIs ---
+        const total = tickets.length; // filter‑dependent
         const rated = tickets.filter(t => t.rating !== null && t.rating !== -1);
         const avgRating = rated.length ? (rated.reduce((acc, t) => acc + t.rating, 0) / rated.length).toFixed(1) : 'N/A';
 
         let totalResponseHours = 0, responseCount = 0;
-let totalResolutionDays = 0, resolutionCount = 0;
-tickets.forEach(t => {
-    if (t.first_hr_response_at && t.created_at) {
-        const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60); // hours
-        totalResponseHours += responseHours;
-        responseCount++;
-    }
-    if (t.resolved_at && t.created_at) {
-        const resolutionDays = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24); // days
-        totalResolutionDays += resolutionDays;
-        resolutionCount++;
-    }
-});
-const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
-const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
+        let totalResolutionDays = 0, resolutionCount = 0;
+        tickets.forEach(t => {
+            if (t.first_hr_response_at && t.created_at) {
+                const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
+                totalResponseHours += responseHours;
+                responseCount++;
+            }
+            if (t.resolved_at && t.created_at) {
+                const resolutionDays = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60*24);
+                totalResolutionDays += resolutionDays;
+                resolutionCount++;
+            }
+        });
+        const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
+        const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).toFixed(1) : 'N/A';
 
         document.getElementById('total-tickets').textContent = total;
-        document.getElementById('open-tickets').textContent = open;
+        document.getElementById('open-tickets').textContent = openNow;
         document.getElementById('avg-resolution').textContent = avgResolution;
         document.getElementById('avg-response').textContent = avgResponse;
         document.getElementById('avg-rating').textContent = avgRating;
 
+        // --- Update the label for open tickets (optional) ---
+        // Assumes the second KPI card contains the label; adjust selector if needed.
+        const openKpiLabel = document.querySelector('.kpi-card:nth-child(2) p');
+        if (openKpiLabel) {
+            const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            openKpiLabel.textContent = `Open as of ${todayStr}`;
+        }
+
+        // --- Charts (unchanged) ---
         // Category breakdown
         const categories = {};
         tickets.forEach(t => {
@@ -1006,91 +1012,76 @@ const avgResolution = resolutionCount ? (totalResolutionDays / resolutionCount).
         }
 
         // Response time trend (daily average response time in hours)
-        
-       // ==================== RESPONSE TIME CHART (IMPROVED) ====================
-const dailyResponse = {};
-tickets.forEach(t => {
-    if (t.first_hr_response_at && t.created_at) {
-        const day = t.created_at.slice(0,10);
-        const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
-        if (!dailyResponse[day]) dailyResponse[day] = { sum: 0, count: 0 };
-        dailyResponse[day].sum += responseHours;
-        dailyResponse[day].count++;
-    }
-});
+        const dailyResponse = {};
+        tickets.forEach(t => {
+            if (t.first_hr_response_at && t.created_at) {
+                const day = t.created_at.slice(0,10);
+                const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
+                if (!dailyResponse[day]) dailyResponse[day] = { sum: 0, count: 0 };
+                dailyResponse[day].sum += responseHours;
+                dailyResponse[day].count++;
+            }
+        });
+        const responseDays = Object.keys(dailyResponse).sort();
+        const avgResponseHours = responseDays.map(d => (dailyResponse[d].sum / dailyResponse[d].count).toFixed(1));
 
-const responseDays = Object.keys(dailyResponse).sort();
-const avgResponseHours = responseDays.map(d => (dailyResponse[d].sum / dailyResponse[d].count).toFixed(1));
-const responseCounts = responseDays.map(d => dailyResponse[d].count);
-
-if (responseTimeChart) responseTimeChart.destroy();
-const ctxResponse = document.getElementById('responseTimeChart')?.getContext('2d');
-if (ctxResponse) {
-    responseTimeChart = new Chart(ctxResponse, {
-        type: 'bar', // changed to bar chart for clarity
-        data: {
-            labels: responseDays,
-            datasets: [{
-                label: 'Avg Response Time (hours)',
-                data: avgResponseHours,
-                backgroundColor: '#f97316',
-                borderColor: '#c2410c',
-                borderWidth: 1,
-                borderRadius: 4,
-                // Add tooltip callback to show count
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        afterLabel: (context) => {
-                            const day = context.label;
-                            const count = dailyResponse[day]?.count || 0;
-                            return `Based on ${count} response${count === 1 ? '' : 's'}`;
+        if (responseTimeChart) responseTimeChart.destroy();
+        const ctxResponse = document.getElementById('responseTimeChart')?.getContext('2d');
+        if (ctxResponse) {
+            responseTimeChart = new Chart(ctxResponse, {
+                type: 'bar', // bar chart for clarity
+                data: {
+                    labels: responseDays,
+                    datasets: [{
+                        label: 'Avg Response (hours)',
+                        data: avgResponseHours,
+                        backgroundColor: '#f97316',
+                        borderColor: '#c2410c',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: (context) => {
+                                    const day = context.label;
+                                    const count = dailyResponse[day]?.count || 0;
+                                    return `Based on ${count} response${count === 1 ? '' : 's'}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Hours' },
+                            ticks: { callback: (value) => value + 'h' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Date' },
+                            ticks: { maxRotation: 45, minRotation: 30 }
                         }
                     }
                 }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Hours'
-                    },
-                    ticks: {
-                        callback: (value) => value + 'h'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Date'
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 30
-                    }
-                }
+            });
+        } else if (responseDays.length === 0) {
+            const canvas = document.getElementById('responseTimeChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#64748b';
+                ctx.textAlign = 'center';
+                ctx.fillText('No response data for this period', canvas.width/2, canvas.height/2);
             }
         }
-    });
-} else if (responseDays.length === 0) {
-    const canvas = document.getElementById('responseTimeChart');
-    if (canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.font = '14px Arial';
-        ctx.fillStyle = '#64748b';
-        ctx.textAlign = 'center';
-        ctx.fillText('No response data for this period', canvas.width/2, canvas.height/2);
-    }
-}
-        // Hourly heatmap (simplified as bar chart of tickets by hour)
+
+        // Hourly heatmap
         const hourCounts = Array(24).fill(0);
         tickets.forEach(t => {
             const hour = new Date(t.created_at).getHours();
@@ -1187,6 +1178,7 @@ if (ctxResponse) {
     }
 }
 
+// ==================== ANALYTICS FILTER FUNCTIONS ====================
 function applyAnalyticsFilter() {
     const quarter = document.getElementById('quarter-select').value;
     const now = new Date();
@@ -1271,8 +1263,6 @@ function getStartDateFromFilter(filter) {
 }
 
 // ==================== MEETING DOCUMENTS ====================
-let currentHrIdForDocs = null;
-
 async function loadMeetingDocs() {
     const listDiv = document.getElementById('docs-list');
     listDiv.innerHTML = '<p>Loading...</p>';
