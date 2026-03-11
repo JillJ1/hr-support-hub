@@ -1,5 +1,5 @@
 // employee-chat.js – upgraded with env variable for bot API, typing indicator fix,
-// and duplicate message fix (rely on realtime subscription for all displays)
+// duplicate message fix, and persistent ticket ID in URL
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
@@ -89,7 +89,6 @@ function showTyping(message = 'Thinking') {
     messagesDiv.appendChild(typingDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-    // If bot takes more than 10 seconds, show a fallback message
     loadingTimeout = setTimeout(() => {
         removeTyping();
         const fallbackMsg = {
@@ -118,7 +117,7 @@ async function sendMessage() {
 
     showTyping();
 
-    // Insert employee message – display will be handled by realtime subscription
+    // Insert employee message – display handled by subscription
     const { error: msgError } = await supabaseClient
         .from('messages')
         .insert({
@@ -134,11 +133,9 @@ async function sendMessage() {
         showToast('Failed to send message', 'error');
         return;
     }
-    // ✅ No manual display – subscription will show it
 
     if (botActive) {
         try {
-            // 🔐 Get the current session token
             const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
             if (sessionError || !sessionData?.session?.access_token) {
                 throw new Error('No valid session token');
@@ -149,7 +146,7 @@ async function sendMessage() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`   // 🔑 Add token here
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ query: text, ticket_id: currentTicketId })
             });
@@ -160,7 +157,6 @@ async function sendMessage() {
             }
 
             const data = await response.json();
-
             removeTyping();
 
             // Insert bot message – display handled by subscription
@@ -175,13 +171,11 @@ async function sendMessage() {
             if (botError) {
                 console.error('Error saving bot message:', botError);
             }
-            // ✅ No manual display
 
         } catch (error) {
             console.error('Bot error:', error);
             removeTyping();
             showToast(`Bot error: ${error.message}`, 'error');
-            // Insert fallback bot message – display handled by subscription
             await supabaseClient
                 .from('messages')
                 .insert({
@@ -189,7 +183,6 @@ async function sendMessage() {
                     sender_type: 'bot',
                     content: '⚠️ Sorry, I encountered an error. Please try again or escalate to HR.'
                 });
-            // ✅ No manual display
         }
     } else {
         removeTyping();
@@ -232,7 +225,6 @@ async function escalateToHR() {
         console.error('Error sending escalation email:', err);
     }
 
-    // Insert system message – display handled by subscription
     await supabaseClient
         .from('messages')
         .insert({
@@ -240,7 +232,6 @@ async function escalateToHR() {
             sender_type: 'bot',
             content: 'Your request has been escalated to HR. Someone will contact you soon.'
         });
-    // ✅ No manual display
 
     document.getElementById('escalate-btn').disabled = true;
     document.getElementById('escalate-btn').textContent = 'Escalated';
@@ -252,6 +243,25 @@ async function init() {
         window.location.href = '/';
         return;
     }
+
+    // 🔗 Get ticket ID from URL query parameter first
+    const urlParams = new URLSearchParams(window.location.search);
+    let ticketId = urlParams.get('id');
+
+    // Fallback to sessionStorage for old links
+    if (!ticketId) {
+        ticketId = sessionStorage.getItem('currentTicketId');
+    }
+
+    if (!ticketId) {
+        alert('No ticket selected. Redirecting to tickets list.');
+        window.location.href = '/employee/tickets.html';
+        return;
+    }
+
+    // Clear from sessionStorage if it was there
+    sessionStorage.removeItem('currentTicketId');
+    currentTicketId = ticketId;
 
     const { data: employee, error: empError } = await supabaseClient
         .from('employees')
@@ -267,14 +277,6 @@ async function init() {
 
     employeeId = employee.id;
     employeeName = employee.full_name;
-
-    currentTicketId = sessionStorage.getItem('currentTicketId');
-    if (!currentTicketId) {
-        alert('No ticket selected. Redirecting to tickets list.');
-        window.location.href = '/employee/tickets.html';
-        return;
-    }
-    sessionStorage.removeItem('currentTicketId');
 
     const { data: ticketData, error: ticketError } = await supabaseClient
         .from('tickets')
@@ -293,7 +295,6 @@ async function init() {
 
     await loadMessages();
 
-    // Subscribe to new messages – all inserts will be displayed here
     supabaseClient
         .channel(`ticket-${currentTicketId}`)
         .on('postgres_changes', {
@@ -306,7 +307,6 @@ async function init() {
         })
         .subscribe();
 
-    // Subscribe to ticket updates (e.g., bot_active change)
     supabaseClient
         .channel(`ticket-${currentTicketId}-status`)
         .on('postgres_changes', {
