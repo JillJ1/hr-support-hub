@@ -771,7 +771,7 @@ async function addEmployee() {
 }
 
 // ==================== ENHANCED ANALYTICS FUNCTIONS ====================
-let ticketsChart, categoryChart, ratingChart;
+let categoryChart, ratingChart;
 let ticketsByStatusChart, responseTimeChart, heatmapChart;
 let currentAnalyticsFilter = 'month'; // default
 
@@ -851,38 +851,6 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
         document.getElementById('avg-resolution').textContent = avgResolution;
         document.getElementById('avg-response').textContent = avgResponse;
         document.getElementById('avg-rating').textContent = avgRating;
-
-        // Tickets over time (daily)
-        const dailyCounts = {};
-        tickets.forEach(t => {
-            const day = t.created_at.slice(0,10);
-            dailyCounts[day] = (dailyCounts[day] || 0) + 1;
-        });
-        const days = Object.keys(dailyCounts).sort();
-        const counts = days.map(d => dailyCounts[d]);
-
-        if (ticketsChart) ticketsChart.destroy();
-        const ctxTickets = document.getElementById('ticketsChart')?.getContext('2d');
-        if (ctxTickets) {
-            ticketsChart = new Chart(ctxTickets, {
-                type: 'line',
-                data: { 
-                    labels: days, 
-                    datasets: [{ 
-                        label: 'Tickets Created', 
-                        data: counts, 
-                        borderColor: '#0a5b8c', 
-                        backgroundColor: 'rgba(10,91,140,0.1)',
-                        tension: 0.2
-                    }] 
-                },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: true } }
-                }
-            });
-        }
 
         // Category breakdown
         const categories = {};
@@ -983,6 +951,17 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
                     scales: { y: { beginAtZero: true } }
                 }
             });
+        } else if (responseDays.length === 0) {
+            // Optionally display a message on the canvas
+            const canvas = document.getElementById('responseTimeChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#64748b';
+                ctx.textAlign = 'center';
+                ctx.fillText('No response data for this period', canvas.width/2, canvas.height/2);
+            }
         }
 
         // Hourly heatmap (simplified as bar chart of tickets by hour)
@@ -1047,6 +1026,16 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
                     scales: { y: { min: 1, max: 5 } }
                 }
             });
+        } else if (weeks.length === 0) {
+            const canvas = document.getElementById('ratingChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#64748b';
+                ctx.textAlign = 'center';
+                ctx.fillText('No ratings yet', canvas.width/2, canvas.height/2);
+            }
         }
 
         // Raw data table
