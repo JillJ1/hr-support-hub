@@ -1,4 +1,5 @@
 // hr-dashboard.js
+// ==================== GLOBAL VARIABLES ====================
 let currentFilter = 'open';
 let currentHrId = null;
 let currentHrName = '';
@@ -6,7 +7,7 @@ let currentHrName = '';
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
 
-// Toast notification
+// ==================== TOAST NOTIFICATION ====================
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
@@ -15,7 +16,7 @@ function showToast(message, type = 'info') {
     setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
-// Helper to escape HTML
+// ==================== UTILITY FUNCTIONS ====================
 function escapeHTML(str) {
     if (!str) return '';
     return String(str).replace(/[&<>"]/g, function(m) {
@@ -27,13 +28,12 @@ function escapeHTML(str) {
     });
 }
 
-// Format date for display
 function formatDate(dateStr) {
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-// Update notification badge
+// ==================== NOTIFICATION BADGE ====================
 async function updateNotificationCount() {
     const { count, error } = await supabaseClient
         .from('tickets')
@@ -46,7 +46,7 @@ async function updateNotificationCount() {
     }
 }
 
-// Load KPI counts
+// ==================== KPI LOADING ====================
 async function loadKPIs() {
     try {
         const { count: empCount } = await supabaseClient
@@ -75,7 +75,7 @@ async function loadKPIs() {
     }
 }
 
-// Load recent cases for dashboard
+// ==================== RECENT CASES ====================
 async function loadRecentCases() {
     const tbody = document.querySelector('#dashboard-cases-table tbody');
     tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
@@ -146,7 +146,7 @@ async function loadRecentCases() {
     });
 }
 
-// Load tasks for dashboard
+// ==================== DASHBOARD TASKS ====================
 async function loadTasks() {
     const list = document.getElementById('dashboard-task-list');
     list.innerHTML = '';
@@ -180,7 +180,7 @@ async function loadTasks() {
     });
 }
 
-// Load employee directory
+// ==================== EMPLOYEE DIRECTORY ====================
 async function loadEmployeeDirectory() {
     const tbody = document.querySelector('#emp-table tbody');
     tbody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
@@ -217,7 +217,7 @@ async function loadEmployeeDirectory() {
     });
 }
 
-// Load cases table (full list)
+// ==================== FULL CASES TABLE ====================
 async function loadCasesTable() {
     const tbody = document.querySelector('#cases-table tbody');
     tbody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
@@ -290,7 +290,7 @@ async function loadCasesTable() {
     }
 }
 
-// Load full tasks list
+// ==================== FULL TASKS LIST ====================
 async function loadFullTasks() {
     const list = document.getElementById('main-task-list');
     list.innerHTML = '';
@@ -326,7 +326,7 @@ async function loadFullTasks() {
     });
 }
 
-// Assign ticket to current HR
+// ==================== TICKET ACTIONS ====================
 async function assignTicket(button) {
     const ticketId = button.dataset.ticketId;
     if (!ticketId) return;
@@ -452,7 +452,7 @@ function viewEmployeeProfile(id, name, email, position) {
     document.getElementById('emp-profile-modal').classList.add('active');
 }
 
-// Navigation function
+// ==================== NAVIGATION ====================
 function navigate(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
     document.getElementById(viewId).classList.remove('hidden');
@@ -464,7 +464,7 @@ function navigate(viewId) {
         loadKPIs();
         loadRecentCases();
         loadTasks();
-        loadDashboardCharts();   // <-- restored
+        loadDashboardCharts();   // Load charts with current filter
         updateNotificationCount();
     } else if (viewId === 'view-employees') {
         loadEmployeeDirectory();
@@ -480,7 +480,7 @@ function navigate(viewId) {
     }
 }
 
-// Populate employee list for datalist
+// ==================== CREATE TICKET MODAL ====================
 async function populateEmployeeList() {
     const { data: employees } = await supabaseClient
         .from('employees')
@@ -496,7 +496,6 @@ async function populateEmployeeList() {
     });
 }
 
-// Create new ticket from modal (with HR notification)
 async function submitNewTicket(e) {
     e.preventDefault();
     const empName = document.getElementById('new-ticket-emp').value;
@@ -569,7 +568,6 @@ async function submitNewTicket(e) {
     }
 }
 
-// Create new task
 async function submitNewTask(e) {
     e.preventDefault();
     const title = document.getElementById('new-task-title').value;
@@ -598,7 +596,7 @@ async function submitNewTask(e) {
     }
 }
 
-// Global search
+// ==================== GLOBAL SEARCH ====================
 async function performSearch(query) {
     if (query.length < 2) {
         document.getElementById('search-results').classList.remove('active');
@@ -656,7 +654,7 @@ async function performSearch(query) {
     resultsDiv.classList.add('active');
 }
 
-// Toggle dropdown menus
+// ==================== DROPDOWN TOGGLES ====================
 function toggleDropdown(id) {
     document.querySelectorAll('.dropdown-menu, .search-dropdown').forEach(el => {
         if (el.id !== id) el.classList.remove('active');
@@ -665,7 +663,7 @@ function toggleDropdown(id) {
     if (el) el.classList.toggle('active');
 }
 
-// Filter employees
+// ==================== FILTER FUNCTIONS ====================
 function filterEmployees() {
     const searchTerm = document.getElementById('emp-search').value.toLowerCase();
     const deptFilter = document.getElementById('emp-dept').value;
@@ -680,7 +678,6 @@ function filterEmployees() {
     });
 }
 
-// Filter cases
 function filterCases() {
     const statusFilter = document.getElementById('case-status-filter').value;
     const assignFilter = document.getElementById('case-assign-filter').value;
@@ -703,18 +700,17 @@ function filterCases() {
     });
 }
 
-// Logout
+// ==================== LOGOUT ====================
 async function signOut() {
     await supabaseClient.auth.signOut();
     window.location.href = '/';
 }
 
-// Close modal helper
+// ==================== MODAL HELPERS ====================
 function closeModal(id) {
     document.getElementById(id).classList.remove('active');
 }
 
-// Open create case modal
 function openCreateCaseModal() {
     document.getElementById('new-ticket-emp').value = '';
     document.getElementById('create-ticket-modal').classList.add('active');
@@ -726,7 +722,7 @@ function openCreateTicketFromEmp() {
     populateEmployeeList();
 }
 
-// Sort table (simple)
+// ==================== TABLE SORTING ====================
 function sortTable(tableId, colIndex, isNumeric = false) {
     const table = document.getElementById(tableId);
     const tbody = table.querySelector('tbody');
@@ -747,7 +743,7 @@ function sortTable(tableId, colIndex, isNumeric = false) {
     rows.forEach(row => tbody.appendChild(row));
 }
 
-// ==================== Add Employee ====================
+// ==================== ADD EMPLOYEE ====================
 async function addEmployee() {
     const fullName = prompt("Enter employee's full name:");
     if (!fullName) return;
@@ -773,7 +769,7 @@ async function addEmployee() {
     }
 }
 
-// ==================== Analytics Functions (Enhanced) ====================
+// ==================== ANALYTICS FUNCTIONS ====================
 let ticketsChart, categoryChart, ratingChart;
 
 async function loadAnalytics(startDate = null, endDate = null) {
@@ -1003,7 +999,7 @@ function exportAnalyticsCSV() {
     });
 }
 
-// ==================== Meeting Documents Functions ====================
+// ==================== MEETING DOCUMENTS ====================
 let currentHrIdForDocs = null;
 
 async function loadMeetingDocs() {
@@ -1104,9 +1100,7 @@ function closeMeetingDocsModal() {
     document.getElementById('meeting-docs-modal').classList.remove('active');
 }
 
-// ==================== CSV Import/Export Functions ====================
-
-// Export employees to CSV
+// ==================== CSV IMPORT/EXPORT ====================
 async function exportEmployeesCSV() {
     const { data: employees, error } = await supabaseClient
         .from('employees')
@@ -1144,14 +1138,12 @@ async function exportEmployeesCSV() {
     showToast('Export started', 'success');
 }
 
-// Open import modal
 function openImportCSVModal() {
     document.getElementById('import-csv-modal').classList.add('active');
     document.getElementById('import-preview').innerHTML = '';
     document.getElementById('csv-upload').value = '';
 }
 
-// Process CSV upload with validation and preview
 async function processCSVUpload() {
     const fileInput = document.getElementById('csv-upload');
     const file = fileInput.files[0];
@@ -1238,7 +1230,7 @@ async function processCSVUpload() {
     }
 }
 
-// ==================== Notification Functions ====================
+// ==================== NOTIFICATION FUNCTIONS ====================
 async function loadNotificationItems() {
     try {
         const { data: openTickets, error: ticketError } = await supabaseClient
@@ -1315,22 +1307,62 @@ async function updateNotificationCount() {
     }
 }
 
-// ==================== Dashboard Charts ====================
+// ==================== DASHBOARD CHARTS (ENHANCED) ====================
 let dashboardTicketsChart, dashboardCategoryChart;
 
+/**
+ * Loads dashboard charts with a time filter.
+ * The filter is read from a dropdown with id 'tickets-chart-filter'.
+ * Options: 'day', 'week', 'month', 'all'.
+ * Also updates a span with id 'tickets-count' to show total tickets in the period.
+ */
 async function loadDashboardCharts() {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const { data: tickets, error } = await supabaseClient
+    const filter = document.getElementById('tickets-chart-filter')?.value || 'week'; // default to week
+    const now = new Date();
+    let startDate;
+
+    // Calculate start date based on filter
+    switch (filter) {
+        case 'day':
+            startDate = new Date(now.setHours(0,0,0,0));
+            break;
+        case 'week':
+            const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+            startDate = new Date(firstDay.setHours(0,0,0,0));
+            break;
+        case 'month':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+        case 'all':
+        default:
+            startDate = null;
+    }
+
+    // Build query
+    let query = supabaseClient
         .from('tickets')
         .select('created_at, category')
-        .gte('created_at', thirtyDaysAgo.toISOString());
+        .order('created_at', { ascending: true });
+
+    if (startDate) {
+        query = query.gte('created_at', startDate.toISOString());
+    }
+
+    const { data: tickets, error } = await query;
 
     if (error) {
         console.error('Error loading dashboard charts:', error);
+        showToast('Error loading charts', 'error');
         return;
     }
 
+    // Update ticket count display
+    const countSpan = document.getElementById('tickets-count');
+    if (countSpan) {
+        countSpan.textContent = `(${tickets.length})`;
+    }
+
+    // Group by day for line chart
     const daily = {};
     tickets.forEach(t => {
         const day = t.created_at.slice(0,10);
@@ -1339,22 +1371,37 @@ async function loadDashboardCharts() {
     const days = Object.keys(daily).sort();
     const counts = days.map(d => daily[d]);
 
+    // Update or create tickets line chart
     if (dashboardTicketsChart) dashboardTicketsChart.destroy();
-    dashboardTicketsChart = new Chart(document.getElementById('dashboard-tickets-chart'), {
-        type: 'line',
-        data: {
-            labels: days,
-            datasets: [{
-                label: 'Tickets',
-                data: counts,
-                borderColor: '#0a5b8c',
-                backgroundColor: 'rgba(10,91,140,0.1)',
-                tension: 0.2
-            }]
-        },
-        options: { responsive: true }
-    });
+    const ctxTickets = document.getElementById('dashboard-tickets-chart')?.getContext('2d');
+    if (ctxTickets) {
+        dashboardTicketsChart = new Chart(ctxTickets, {
+            type: 'line',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: 'Tickets',
+                    data: counts,
+                    borderColor: '#0a5b8c',
+                    backgroundColor: 'rgba(10,91,140,0.1)',
+                    tension: 0.2,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                }
+            }
+        });
+    }
 
+    // Category breakdown (uses same filtered tickets)
     const categories = {};
     tickets.forEach(t => {
         const cat = t.category || 'Uncategorized';
@@ -1364,20 +1411,29 @@ async function loadDashboardCharts() {
     const catData = Object.values(categories);
 
     if (dashboardCategoryChart) dashboardCategoryChart.destroy();
-    dashboardCategoryChart = new Chart(document.getElementById('dashboard-category-chart'), {
-        type: 'pie',
-        data: {
-            labels: catLabels,
-            datasets: [{
-                data: catData,
-                backgroundColor: ['#0a5b8c', '#ffc107', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#94a3b8']
-            }]
-        },
-        options: { responsive: true }
-    });
+    const ctxCategory = document.getElementById('dashboard-category-chart')?.getContext('2d');
+    if (ctxCategory) {
+        dashboardCategoryChart = new Chart(ctxCategory, {
+            type: 'pie',
+            data: {
+                labels: catLabels,
+                datasets: [{
+                    data: catData,
+                    backgroundColor: ['#0a5b8c', '#ffc107', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#94a3b8']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right' }
+                }
+            }
+        });
+    }
 }
 
-// ==================== Initialize ====================
+// ==================== INITIALIZATION ====================
 async function init() {
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) {
@@ -1430,6 +1486,7 @@ async function init() {
             if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
                 loadRecentCases();
                 loadKPIs();
+                loadDashboardCharts(); // refresh charts
             }
             if (!document.getElementById('view-cases').classList.contains('hidden')) {
                 loadCasesTable();
@@ -1480,6 +1537,12 @@ async function init() {
     window.openImportCSVModal = openImportCSVModal;
     window.processCSVUpload = processCSVUpload;
 
+    // Add listener for the tickets chart filter (if it exists)
+    const filterSelect = document.getElementById('tickets-chart-filter');
+    if (filterSelect) {
+        filterSelect.addEventListener('change', loadDashboardCharts);
+    }
+
     navigate('view-dashboard');
 }
 
@@ -1488,7 +1551,7 @@ function closeMenu() {
     document.getElementById('sidebar-overlay').classList.remove('active');
 }
 
-// Expose functions to global scope
+// ==================== GLOBAL EXPOSURE ====================
 window.navigate = navigate;
 window.viewEmployeeProfile = viewEmployeeProfile;
 window.openCreateCaseModal = openCreateCaseModal;
