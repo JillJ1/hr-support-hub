@@ -129,9 +129,7 @@ async function sendMessage() {
                 })
             });
             const data = await response.json();
-            // Success response will be handled by the real-time listener if the bot saves to DB,
-            // but your Railway app usually responds directly or saves to DB. 
-            // If it saves to DB, the listener below handles display.
+            // Success response will be handled by the real-time listener if the bot saves to DB
         } catch (err) {
             console.error('Bot API Error:', err);
             if (document.getElementById('bot-loading')) document.getElementById('bot-loading').remove();
