@@ -1,3 +1,4 @@
+// hr-ticket.js – upgraded with internal notes height fix, task creation on reassign, etc.
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
 let currentHrId = null;
@@ -81,7 +82,6 @@ async function loadTicket() {
         document.getElementById('employee-phone').textContent = emp.phone || 'Not provided';
         document.getElementById('employee-start').textContent = emp.start_date ? new Date(emp.start_date).toLocaleDateString() : 'N/A';
 
-        // Set category dropdown value
         const categorySelect = document.getElementById('ticket-category');
         if (categorySelect && ticket.category) {
             categorySelect.value = ticket.category;
@@ -207,7 +207,16 @@ async function addNote() {
     if (error) {
         showToast('Error adding note: ' + error.message, 'error');
     } else {
-        loadNotes();
+        await loadNotes();
+        // After loading, adjust collapsible content height
+        const content = document.getElementById('notes-content');
+        if (!notesOpen) {
+            // If collapsed, temporarily expand to get scrollHeight, then collapse back
+            content.style.maxHeight = content.scrollHeight + 'px';
+            setTimeout(() => {
+                if (!notesOpen) content.style.maxHeight = '0px';
+            }, 10);
+        }
         showToast('Note added', 'success');
     }
 }
@@ -304,7 +313,6 @@ async function resolve() {
                     html: chatLogHtml
                 };
                 try {
-                    // Use supabaseUrl directly (already has https://)
                     const response = await fetch(
                         `${supabaseUrl}/functions/v1/send-email`,
                         {
@@ -332,7 +340,6 @@ async function resolve() {
     }
 }
 
-// New function to handle category dropdown changes
 async function updateCategory(newCategory) {
     if (!currentTicketId) {
         showToast('No ticket loaded', 'error');
@@ -488,7 +495,7 @@ async function init() {
 
 window.toggleNotes = toggleNotes;
 window.closeModal = closeModal;
-window.updateCategory = updateCategory; // expose the category update function
+window.updateCategory = updateCategory;
 
 init();
 
