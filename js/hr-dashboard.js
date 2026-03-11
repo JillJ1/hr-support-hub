@@ -1,4 +1,4 @@
-// hr-dashboard.js – COMPLETE UPGRADED VERSION
+// hr-dashboard.js – COMPLETE UPGRADED VERSION with debug log
 // ==================== GLOBAL VARIABLES ====================
 let currentFilter = 'open';
 let currentHrId = null;
@@ -886,6 +886,9 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
         }
         const { data: tickets, error } = await query;
         if (error) throw error;
+
+        // 🐞 DEBUG: Log the tickets to console
+        console.log('Analytics tickets:', tickets);
 
         // Update KPIs (reuse existing calculations)
         const total = tickets.length;
