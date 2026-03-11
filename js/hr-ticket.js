@@ -1,5 +1,5 @@
 // hr-ticket.js – upgraded with internal notes height fix, task creation on reassign,
-// and duplicate message fix (rely on realtime subscription for all message displays)
+// duplicate message fix, resolved_at on dropdown close, and better email logging
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -279,11 +279,19 @@ async function takeOver() {
     }
 }
 
+// ✅ FIX: Set resolved_at when closing via dropdown
 async function changeStatus() {
     const newStatus = document.getElementById('status-dropdown').value;
+    const updateData = { status: newStatus };
+
+    // If the new status is 'closed', also set resolved_at
+    if (newStatus === 'closed') {
+        updateData.resolved_at = new Date().toISOString();
+    }
+
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', currentTicketId);
 
     if (error) {
@@ -294,6 +302,7 @@ async function changeStatus() {
     }
 }
 
+// ✅ FIX: Improved email error logging
 async function resolve() {
     try {
         const { error } = await supabaseClient
@@ -326,14 +335,16 @@ async function resolve() {
                             body: JSON.stringify(emailPayload)
                         }
                     );
+                    const responseText = await response.text();
                     if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('Email send failed:', errorText);
+                        console.error('Email send failed:', response.status, responseText);
+                        showToast('Email notification failed', 'error');
                     } else {
-                        console.log('Email sent successfully');
+                        console.log('Email sent successfully:', responseText);
                     }
                 } catch (err) {
                     console.error('Error sending email:', err);
+                    showToast('Email notification error', 'error');
                 }
             } else {
                 console.log('No employee email found');
