@@ -476,7 +476,8 @@ function navigate(viewId) {
         loadFullTasks();
         updateNotificationCount();
     } else if (viewId === 'view-analytics') {
-        loadAnalytics();
+        // Load analytics with default filter (e.g., 'month')
+        loadEnhancedAnalytics('month');
     }
 }
 
@@ -769,21 +770,60 @@ async function addEmployee() {
     }
 }
 
-// ==================== ANALYTICS FUNCTIONS ====================
+// ==================== ENHANCED ANALYTICS FUNCTIONS ====================
 let ticketsChart, categoryChart, ratingChart;
+let ticketsByStatusChart, responseTimeChart, heatmapChart;
+let currentAnalyticsFilter = 'month'; // default
 
-async function loadAnalytics(startDate = null, endDate = null) {
+/**
+ * Enhanced analytics loader – loads all charts for a given date filter.
+ * @param {string} filter - 'day', 'week', 'month', 'all'
+ * @param {string} startDate - optional ISO date for custom range
+ * @param {string} endDate - optional ISO date for custom range
+ */
+async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate = null) {
+    // Show loading on all KPIs and charts
     const kpis = ['total-tickets', 'open-tickets', 'avg-resolution', 'avg-response', 'avg-rating'];
-    kpis.forEach(id => document.getElementById(id).textContent = '…'); // show loading
+    kpis.forEach(id => document.getElementById(id).textContent = '…');
 
     try {
-        let query = supabaseClient.from('tickets').select('*');
+        // Determine date range based on filter
+        const now = new Date();
+        let start, end;
         if (startDate && endDate) {
-            query = query.gte('created_at', startDate).lte('created_at', endDate);
+            start = startDate;
+            end = endDate;
+        } else {
+            switch (filter) {
+                case 'day':
+                    start = new Date(now.setHours(0,0,0,0)).toISOString().split('T')[0];
+                    end = new Date(now.setHours(23,59,59,999)).toISOString().split('T')[0];
+                    break;
+                case 'week':
+                    const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+                    start = new Date(firstDay.setHours(0,0,0,0)).toISOString().split('T')[0];
+                    end = new Date().toISOString().split('T')[0];
+                    break;
+                case 'month':
+                    start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                    end = new Date().toISOString().split('T')[0];
+                    break;
+                case 'all':
+                default:
+                    start = null;
+                    end = null;
+            }
+        }
+
+        // Build base query
+        let query = supabaseClient.from('tickets').select('*');
+        if (start && end) {
+            query = query.gte('created_at', start).lte('created_at', end);
         }
         const { data: tickets, error } = await query;
         if (error) throw error;
 
+        // Update KPIs (reuse existing calculations)
         const total = tickets.length;
         const open = tickets.filter(t => t.status === 'open').length;
         const rated = tickets.filter(t => t.rating !== null && t.rating !== -1);
@@ -839,10 +879,7 @@ async function loadAnalytics(startDate = null, endDate = null) {
                 options: { 
                     responsive: true, 
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true },
-                        tooltip: { enabled: true }
-                    }
+                    plugins: { legend: { display: true } }
                 }
             });
         }
@@ -871,9 +908,108 @@ async function loadAnalytics(startDate = null, endDate = null) {
                 options: { 
                     responsive: true, 
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'right' }
-                    }
+                    plugins: { legend: { position: 'right' } }
+                }
+            });
+        }
+
+        // Tickets by status
+        const statusCounts = {
+            'open': 0,
+            'inprogress': 0,
+            'closed': 0,
+            'escalated': 0
+        };
+        tickets.forEach(t => {
+            const st = t.status || 'open';
+            if (statusCounts[st] !== undefined) statusCounts[st]++;
+        });
+        const statusLabels = ['Open', 'In Progress', 'Resolved', 'Escalated'];
+        const statusData = [statusCounts.open, statusCounts.inprogress, statusCounts.closed, statusCounts.escalated];
+
+        if (ticketsByStatusChart) ticketsByStatusChart.destroy();
+        const ctxStatus = document.getElementById('ticketsByStatusChart')?.getContext('2d');
+        if (ctxStatus) {
+            ticketsByStatusChart = new Chart(ctxStatus, {
+                type: 'bar',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        label: 'Tickets',
+                        data: statusData,
+                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#ef4444']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            });
+        }
+
+        // Response time trend (daily average response time in hours)
+        const dailyResponse = {};
+        tickets.forEach(t => {
+            if (t.first_hr_response_at && t.created_at) {
+                const day = t.created_at.slice(0,10);
+                const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
+                if (!dailyResponse[day]) dailyResponse[day] = { sum: 0, count: 0 };
+                dailyResponse[day].sum += responseHours;
+                dailyResponse[day].count++;
+            }
+        });
+        const responseDays = Object.keys(dailyResponse).sort();
+        const avgResponseHours = responseDays.map(d => (dailyResponse[d].sum / dailyResponse[d].count).toFixed(1));
+
+        if (responseTimeChart) responseTimeChart.destroy();
+        const ctxResponse = document.getElementById('responseTimeChart')?.getContext('2d');
+        if (ctxResponse) {
+            responseTimeChart = new Chart(ctxResponse, {
+                type: 'line',
+                data: {
+                    labels: responseDays,
+                    datasets: [{
+                        label: 'Avg Response (hours)',
+                        data: avgResponseHours,
+                        borderColor: '#f97316',
+                        backgroundColor: 'rgba(249,115,22,0.1)',
+                        tension: 0.2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // Hourly heatmap (simplified as bar chart of tickets by hour)
+        const hourCounts = Array(24).fill(0);
+        tickets.forEach(t => {
+            const hour = new Date(t.created_at).getHours();
+            hourCounts[hour]++;
+        });
+        const hourLabels = Array.from({length: 24}, (_, i) => `${i}:00`);
+
+        if (heatmapChart) heatmapChart.destroy();
+        const ctxHeat = document.getElementById('heatmapChart')?.getContext('2d');
+        if (ctxHeat) {
+            heatmapChart = new Chart(ctxHeat, {
+                type: 'bar',
+                data: {
+                    labels: hourLabels,
+                    datasets: [{
+                        label: 'Tickets',
+                        data: hourCounts,
+                        backgroundColor: '#0a5b8c'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
                 }
             });
         }
@@ -963,7 +1099,7 @@ function applyAnalyticsFilter() {
         start = new Date(start).toISOString().split('T')[0];
         end = new Date(end).toISOString().split('T')[0];
     }
-    loadAnalytics(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
+    loadEnhancedAnalytics('custom', start, end);
 }
 
 document.getElementById('quarter-select').addEventListener('change', function() {
@@ -1340,134 +1476,6 @@ async function loadDashboardCharts() {
             return;
     }
 
-    // Build query
-    let query = supabaseClient
-        .from('tickets')
-        .select('created_at')
-        .order('created_at', { ascending: true });
-
-    if (startDate) {
-        query = query.gte('created_at', startDate.toISOString());
-    }
-
-    const { data: tickets, error } = await query;
-
-    if (error) {
-        console.error('Error loading dashboard charts:', error);
-        showToast('Error loading charts', 'error');
-        return;
-    }
-
-    // Update ticket count
-    const countSpan = document.getElementById('tickets-count');
-    if (countSpan) {
-        countSpan.textContent = `(${tickets.length})`;
-    }
-
-    // Group data based on filter
-    let labels = [];
-    let counts = [];
-
-    if (groupBy === 'hour') {
-        // Group by hour of day (0-23)
-        const hourMap = {};
-        for (let i = 0; i < 24; i++) hourMap[i] = 0;
-        tickets.forEach(t => {
-            const hour = new Date(t.created_at).getHours();
-            hourMap[hour] = (hourMap[hour] || 0) + 1;
-        });
-        labels = Array.from({length: 24}, (_, i) => `${i}:00`);
-        counts = Object.values(hourMap);
-    } else if (groupBy === 'weekday') {
-        // Group by day of week (Sunday=0 .. Saturday=6)
-        const weekdayMap = Array(7).fill(0);
-        tickets.forEach(t => {
-            const day = new Date(t.created_at).getDay();
-            weekdayMap[day]++;
-        });
-        labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        counts = weekdayMap;
-    } else if (groupBy === 'monthday') {
-        // Group by day of month (1-31)
-        const monthdayMap = {};
-        for (let i = 1; i <= 31; i++) monthdayMap[i] = 0;
-        tickets.forEach(t => {
-            const day = new Date(t.created_at).getDate();
-            monthdayMap[day] = (monthdayMap[day] || 0) + 1;
-        });
-        labels = Array.from({length: 31}, (_, i) => (i+1).toString());
-        counts = Object.values(monthdayMap);
-    }
-
-    // Update or create tickets line chart
-    if (dashboardTicketsChart) dashboardTicketsChart.destroy();
-    const ctxTickets = document.getElementById('dashboard-tickets-chart')?.getContext('2d');
-    if (ctxTickets) {
-        dashboardTicketsChart = new Chart(ctxTickets, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Tickets',
-                    data: counts,
-                    borderColor: '#0a5b8c',
-                    backgroundColor: 'rgba(10,91,140,0.1)',
-                    tension: 0.2,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    y: { beginAtZero: true, ticks: { stepSize: 1 } }
-                }
-            }
-        });
-    }
-
-    // Category chart remains unchanged (still based on same filtered tickets)
-    const categories = {};
-    tickets.forEach(t => {
-        // We didn't fetch category, so we need to fetch categories separately or use the same tickets but we don't have category in this query. We'll need to modify the query to include category.
-        // Actually, we should fetch tickets with category in the same query. Let's adjust the query to include category.
-        // For simplicity, we'll keep the category chart as before but using the same filtered tickets. We need to adjust the query to include category.
-    });
-
-    // Better: re-run a query with category for the category chart. But to avoid two queries, we can use the same data if we fetch category. Let's update the query to include category.
-    // I'll modify the initial query to select both created_at and category.
-}
-
-// Fix: We need to modify the initial query to include category for the category chart.
-// Let's rewrite the function with a combined query that gets both fields.
-
-async function loadDashboardCharts() {
-    const filter = currentChartFilter;
-    const now = new Date();
-    let startDate;
-    let groupBy;
-
-    switch (filter) {
-        case 'day':
-            startDate = new Date(now.setHours(0,0,0,0));
-            groupBy = 'hour';
-            break;
-        case 'week':
-            const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
-            startDate = new Date(firstDay.setHours(0,0,0,0));
-            groupBy = 'weekday';
-            break;
-        case 'month':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            groupBy = 'monthday';
-            break;
-        default:
-            return;
-    }
-
     let query = supabaseClient
         .from('tickets')
         .select('created_at, category')
@@ -1577,29 +1585,24 @@ async function loadDashboardCharts() {
     }
 }
 
-// Add event listeners for filter buttons (in init function)
-// We'll add this inside init after other listeners.
+// ==================== REPORT SCHEDULER ====================
+function openReportScheduler() {
+    document.getElementById('report-scheduler-modal').classList.add('active');
+}
 
-// Also need to handle the 'All' button to navigate to analytics.
-
-// Add this inside init:
-document.querySelectorAll('.chart-filter-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        const filter = e.target.dataset.filter;
-        if (filter === 'all') {
-            navigate('view-analytics');
-        } else {
-            // Remove active class from all filter buttons (optional styling)
-            document.querySelectorAll('.chart-filter-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            currentChartFilter = filter;
-            loadDashboardCharts();
-        }
-    });
-});
-
-// Also set the default active button to 'week' (selected)
-// In init, after adding listeners, set the week button as active.
+function scheduleReport() {
+    // Placeholder – actual implementation would store schedule in DB and set up Edge Function.
+    const name = document.getElementById('report-name').value;
+    const emails = document.getElementById('report-emails').value;
+    const frequency = document.getElementById('report-frequency').value;
+    if (!name || !emails) {
+        alert('Please fill all fields');
+        return;
+    }
+    // For now, just toast and close.
+    showToast(`Report "${name}" scheduled ${frequency} to ${emails}`, 'success');
+    closeModal('report-scheduler-modal');
+}
 
 // ==================== INITIALIZATION ====================
 async function init() {
@@ -1700,16 +1703,44 @@ async function init() {
         console.error('Tour button not found');
     }
 
+    // Dashboard chart filter buttons
+    document.querySelectorAll('.chart-filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const filter = e.target.dataset.filter;
+            if (filter === 'all') {
+                navigate('view-analytics');
+            } else {
+                // Remove active class from all filter buttons (optional styling)
+                document.querySelectorAll('.chart-filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentChartFilter = filter;
+                loadDashboardCharts();
+            }
+        });
+    });
+    // Set default active button to 'week'
+    const defaultWeek = document.querySelector('.chart-filter-btn[data-filter="week"]');
+    if (defaultWeek) defaultWeek.classList.add('active');
+
+    // Analytics filter buttons
+    document.querySelectorAll('.analytics-filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const filter = e.target.dataset.filter;
+            // Remove active class from all analytics filter buttons
+            document.querySelectorAll('.analytics-filter-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentAnalyticsFilter = filter;
+            loadEnhancedAnalytics(filter);
+        });
+    });
+    // Set default analytics filter to 'month'
+    const defaultMonth = document.querySelector('.analytics-filter-btn[data-filter="month"]');
+    if (defaultMonth) defaultMonth.classList.add('active');
+
     // Expose CSV functions globally
     window.exportEmployeesCSV = exportEmployeesCSV;
     window.openImportCSVModal = openImportCSVModal;
     window.processCSVUpload = processCSVUpload;
-
-    // Add listener for the tickets chart filter (if it exists)
-    const filterSelect = document.getElementById('tickets-chart-filter');
-    if (filterSelect) {
-        filterSelect.addEventListener('change', loadDashboardCharts);
-    }
 
     navigate('view-dashboard');
 }
@@ -1744,5 +1775,7 @@ window.openMeetingDocsModal = openMeetingDocsModal;
 window.closeMeetingDocsModal = closeMeetingDocsModal;
 window.uploadDocument = uploadDocument;
 window.addEmployee = addEmployee;
+window.openReportScheduler = openReportScheduler;
+window.scheduleReport = scheduleReport;
 
 init();
