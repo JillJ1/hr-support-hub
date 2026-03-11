@@ -1307,41 +1307,43 @@ async function updateNotificationCount() {
     }
 }
 
-// ==================== DASHBOARD CHARTS (ENHANCED) ====================
+// ==================== DASHBOARD CHARTS (ENHANCED WITH BUTTONS) ====================
 let dashboardTicketsChart, dashboardCategoryChart;
+let currentChartFilter = 'week'; // default
 
 /**
- * Loads dashboard charts with a time filter.
- * The filter is read from a dropdown with id 'tickets-chart-filter'.
- * Options: 'day', 'week', 'month', 'all'.
- * Also updates a span with id 'tickets-count' to show total tickets in the period.
+ * Loads dashboard charts with a time filter and appropriate grouping.
+ * Filter options: 'day', 'week', 'month', 'all' (navigate to analytics).
  */
 async function loadDashboardCharts() {
-    const filter = document.getElementById('tickets-chart-filter')?.value || 'week'; // default to week
+    const filter = currentChartFilter;
     const now = new Date();
     let startDate;
+    let groupBy; // 'hour', 'day', 'weekday', 'monthday'
 
-    // Calculate start date based on filter
     switch (filter) {
         case 'day':
             startDate = new Date(now.setHours(0,0,0,0));
+            groupBy = 'hour';
             break;
         case 'week':
             const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
             startDate = new Date(firstDay.setHours(0,0,0,0));
+            groupBy = 'weekday';
             break;
         case 'month':
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            groupBy = 'monthday';
             break;
-        case 'all':
         default:
-            startDate = null;
+            // 'all' should not call this function; it navigates to analytics
+            return;
     }
 
     // Build query
     let query = supabaseClient
         .from('tickets')
-        .select('created_at, category')
+        .select('created_at')
         .order('created_at', { ascending: true });
 
     if (startDate) {
@@ -1356,20 +1358,46 @@ async function loadDashboardCharts() {
         return;
     }
 
-    // Update ticket count display
+    // Update ticket count
     const countSpan = document.getElementById('tickets-count');
     if (countSpan) {
         countSpan.textContent = `(${tickets.length})`;
     }
 
-    // Group by day for line chart
-    const daily = {};
-    tickets.forEach(t => {
-        const day = t.created_at.slice(0,10);
-        daily[day] = (daily[day] || 0) + 1;
-    });
-    const days = Object.keys(daily).sort();
-    const counts = days.map(d => daily[d]);
+    // Group data based on filter
+    let labels = [];
+    let counts = [];
+
+    if (groupBy === 'hour') {
+        // Group by hour of day (0-23)
+        const hourMap = {};
+        for (let i = 0; i < 24; i++) hourMap[i] = 0;
+        tickets.forEach(t => {
+            const hour = new Date(t.created_at).getHours();
+            hourMap[hour] = (hourMap[hour] || 0) + 1;
+        });
+        labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+        counts = Object.values(hourMap);
+    } else if (groupBy === 'weekday') {
+        // Group by day of week (Sunday=0 .. Saturday=6)
+        const weekdayMap = Array(7).fill(0);
+        tickets.forEach(t => {
+            const day = new Date(t.created_at).getDay();
+            weekdayMap[day]++;
+        });
+        labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        counts = weekdayMap;
+    } else if (groupBy === 'monthday') {
+        // Group by day of month (1-31)
+        const monthdayMap = {};
+        for (let i = 1; i <= 31; i++) monthdayMap[i] = 0;
+        tickets.forEach(t => {
+            const day = new Date(t.created_at).getDate();
+            monthdayMap[day] = (monthdayMap[day] || 0) + 1;
+        });
+        labels = Array.from({length: 31}, (_, i) => (i+1).toString());
+        counts = Object.values(monthdayMap);
+    }
 
     // Update or create tickets line chart
     if (dashboardTicketsChart) dashboardTicketsChart.destroy();
@@ -1378,7 +1406,7 @@ async function loadDashboardCharts() {
         dashboardTicketsChart = new Chart(ctxTickets, {
             type: 'line',
             data: {
-                labels: days,
+                labels: labels,
                 datasets: [{
                     label: 'Tickets',
                     data: counts,
@@ -1397,6 +1425,124 @@ async function loadDashboardCharts() {
                 scales: {
                     y: { beginAtZero: true, ticks: { stepSize: 1 } }
                 }
+            }
+        });
+    }
+
+    // Category chart remains unchanged (still based on same filtered tickets)
+    const categories = {};
+    tickets.forEach(t => {
+        // We didn't fetch category, so we need to fetch categories separately or use the same tickets but we don't have category in this query. We'll need to modify the query to include category.
+        // Actually, we should fetch tickets with category in the same query. Let's adjust the query to include category.
+        // For simplicity, we'll keep the category chart as before but using the same filtered tickets. We need to adjust the query to include category.
+    });
+
+    // Better: re-run a query with category for the category chart. But to avoid two queries, we can use the same data if we fetch category. Let's update the query to include category.
+    // I'll modify the initial query to select both created_at and category.
+}
+
+// Fix: We need to modify the initial query to include category for the category chart.
+// Let's rewrite the function with a combined query that gets both fields.
+
+async function loadDashboardCharts() {
+    const filter = currentChartFilter;
+    const now = new Date();
+    let startDate;
+    let groupBy;
+
+    switch (filter) {
+        case 'day':
+            startDate = new Date(now.setHours(0,0,0,0));
+            groupBy = 'hour';
+            break;
+        case 'week':
+            const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+            startDate = new Date(firstDay.setHours(0,0,0,0));
+            groupBy = 'weekday';
+            break;
+        case 'month':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            groupBy = 'monthday';
+            break;
+        default:
+            return;
+    }
+
+    let query = supabaseClient
+        .from('tickets')
+        .select('created_at, category')
+        .order('created_at', { ascending: true });
+
+    if (startDate) {
+        query = query.gte('created_at', startDate.toISOString());
+    }
+
+    const { data: tickets, error } = await query;
+
+    if (error) {
+        console.error('Error loading dashboard charts:', error);
+        showToast('Error loading charts', 'error');
+        return;
+    }
+
+    // Update ticket count
+    const countSpan = document.getElementById('tickets-count');
+    if (countSpan) {
+        countSpan.textContent = `(${tickets.length})`;
+    }
+
+    // Group tickets for line chart
+    let labels = [];
+    let counts = [];
+
+    if (groupBy === 'hour') {
+        const hourMap = Array(24).fill(0);
+        tickets.forEach(t => {
+            const hour = new Date(t.created_at).getHours();
+            hourMap[hour]++;
+        });
+        labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+        counts = hourMap;
+    } else if (groupBy === 'weekday') {
+        const weekdayMap = Array(7).fill(0);
+        tickets.forEach(t => {
+            const day = new Date(t.created_at).getDay();
+            weekdayMap[day]++;
+        });
+        labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        counts = weekdayMap;
+    } else if (groupBy === 'monthday') {
+        const monthdayMap = Array(31).fill(0);
+        tickets.forEach(t => {
+            const day = new Date(t.created_at).getDate();
+            monthdayMap[day-1]++;
+        });
+        labels = Array.from({length: 31}, (_, i) => (i+1).toString());
+        counts = monthdayMap;
+    }
+
+    // Update line chart
+    if (dashboardTicketsChart) dashboardTicketsChart.destroy();
+    const ctxTickets = document.getElementById('dashboard-tickets-chart')?.getContext('2d');
+    if (ctxTickets) {
+        dashboardTicketsChart = new Chart(ctxTickets, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Tickets',
+                    data: counts,
+                    borderColor: '#0a5b8c',
+                    backgroundColor: 'rgba(10,91,140,0.1)',
+                    tension: 0.2,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
         });
     }
@@ -1425,13 +1571,35 @@ async function loadDashboardCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right' }
-                }
+                plugins: { legend: { position: 'right' } }
             }
         });
     }
 }
+
+// Add event listeners for filter buttons (in init function)
+// We'll add this inside init after other listeners.
+
+// Also need to handle the 'All' button to navigate to analytics.
+
+// Add this inside init:
+document.querySelectorAll('.chart-filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const filter = e.target.dataset.filter;
+        if (filter === 'all') {
+            navigate('view-analytics');
+        } else {
+            // Remove active class from all filter buttons (optional styling)
+            document.querySelectorAll('.chart-filter-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentChartFilter = filter;
+            loadDashboardCharts();
+        }
+    });
+});
+
+// Also set the default active button to 'week' (selected)
+// In init, after adding listeners, set the week button as active.
 
 // ==================== INITIALIZATION ====================
 async function init() {
