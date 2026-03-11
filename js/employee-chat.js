@@ -50,6 +50,8 @@ function showTypingIndicator() {
     if (document.getElementById(typingIndicatorId)) return;
     
     const messagesDiv = document.getElementById('messages');
+    if (!messagesDiv) return;
+    
     const indicatorDiv = document.createElement('div');
     indicatorDiv.id = typingIndicatorId;
     indicatorDiv.className = 'message bot typing-indicator';
@@ -68,9 +70,11 @@ function removeTypingIndicator() {
 
 // ==================== CHAT LOGIC ====================
 function displayMessage(msg) {
-    removeTypingIndicator(); // Always remove typing indicator before appending new message
+    removeTypingIndicator(); 
     
     const messagesDiv = document.getElementById('messages');
+    if (!messagesDiv) return;
+    
     const div = document.createElement('div');
     div.className = `message ${msg.sender_type}`;
     
@@ -96,17 +100,25 @@ async function loadMessages() {
 
         if (error) throw error;
         
-        document.getElementById('messages').innerHTML = '';
-        messages.forEach(displayMessage);
+        const messagesDiv = document.getElementById('messages');
+        if (messagesDiv) {
+            messagesDiv.innerHTML = '';
+            messages.forEach(displayMessage);
+        }
     } catch (err) {
         console.error('Error loading messages:', err);
-        document.getElementById('messages').innerHTML = '<div style="text-align:center; color:#b71c1c; padding:20px;">Error loading conversation history.</div>';
+        const messagesDiv = document.getElementById('messages');
+        if (messagesDiv) {
+            messagesDiv.innerHTML = '<div style="text-align:center; color:#b71c1c; padding:20px;">Error loading conversation history.</div>';
+        }
     }
 }
 
 async function sendMessage() {
     const input = document.getElementById('message-input');
     const btn = document.getElementById('send-btn');
+    if (!input || !btn) return;
+    
     const text = input.value.trim();
     if (!text) return;
 
@@ -115,7 +127,6 @@ async function sendMessage() {
     btn.disabled = true;
 
     try {
-        // Save employee message to database
         const { error: dbError } = await supabaseClient
             .from('messages')
             .insert({
@@ -126,11 +137,9 @@ async function sendMessage() {
 
         if (dbError) throw dbError;
 
-        // If bot is active, show typing indicator and call Railway API
         if (botActive) {
             showTypingIndicator();
             
-            // AbortController to handle timeouts (15 seconds)
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -188,7 +197,6 @@ async function escalateToHR() {
 
         if (error) throw error;
 
-        // Visual update (Supabase Realtime will trigger the rest)
         botActive = false;
         displayMessage({
             sender_type: 'bot',
@@ -233,7 +241,6 @@ async function init() {
     employeeId = emp.id;
     employeeName = emp.full_name;
 
-    // Fetch initial ticket state
     const { data: ticket } = await supabaseClient
         .from('tickets')
         .select('bot_active, status')
@@ -243,7 +250,7 @@ async function init() {
     if (ticket) {
         botActive = ticket.bot_active;
         if (ticket.status === 'closed') {
-            // FIXED: Using querySelector for class instead of getElementById, and adding safety checks
+            // SAFETY CHECKS: Prevents the "Cannot read properties of null" error
             const inputArea = document.querySelector('.input-area');
             if (inputArea) inputArea.style.display = 'none';
             
@@ -257,7 +264,6 @@ async function init() {
 
     await loadMessages();
 
-    // Set up Realtime Subscriptions
     supabaseClient
         .channel(`messages-${currentTicketId}`)
         .on('postgres_changes', {
@@ -281,7 +287,6 @@ async function init() {
             const newBotActive = payload.new.bot_active;
             const newStatus = payload.new.status;
             
-            // HR took over
             if (botActive && !newBotActive) {
                 displayMessage({
                     sender_type: 'bot',
@@ -291,9 +296,7 @@ async function init() {
                 if (escalateBtn) escalateBtn.style.display = 'none';
             }
             
-            // Ticket was closed
             if (newStatus === 'closed') {
-                // FIXED: Safety checks applied here as well
                 const inputArea = document.querySelector('.input-area');
                 if (inputArea) inputArea.style.display = 'none';
                 
@@ -310,7 +313,6 @@ async function init() {
         })
         .subscribe();
 
-    // Event Listeners
     const backBtn = document.getElementById('back-btn');
     if (backBtn) {
         backBtn.addEventListener('click', () => {
