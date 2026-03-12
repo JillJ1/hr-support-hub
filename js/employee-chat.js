@@ -1,4 +1,4 @@
-// employee-chat.js – updated with escalation visibility, rating prompt, and scroll fix
+// employee-chat.js – updated with escalation visibility, rating prompt, scroll fix, and debug logging
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
@@ -199,19 +199,31 @@ async function sendMessage() {
     input.focus();
 }
 
-// ✅ FIX: Make ticket visible to HR on escalation
+// ✅ Enhanced escalateToHR with .select() and detailed logging
 async function escalateToHR() {
-    const { error } = await supabaseClient
+    console.log('Escalating ticket:', currentTicketId);
+    const { data, error } = await supabaseClient
         .from('tickets')
-        .update({ priority: 'high', visible_to_hr: true })  // 👈 added visible_to_hr
-        .eq('id', currentTicketId);
+        .update({ priority: 'high', visible_to_hr: true })
+        .eq('id', currentTicketId)
+        .select();  // 👈 returns the updated rows
+
+    console.log('Update response:', { data, error });
 
     if (error) {
         console.error('Error escalating:', error);
-        alert('Could not escalate. Please try again.');
+        alert('Could not escalate: ' + error.message);
         return;
     }
 
+    // If data is empty array, the update condition didn't match any row
+    if (!data || data.length === 0) {
+        console.warn('No rows updated – possible RLS or condition mismatch');
+        alert('No ticket updated – please contact support.');
+        return;
+    }
+
+    // Success – now send email and system message
     const hrEmail = 'jcjj.1104@gmail.com'; // Should be env variable
     const ticketLink = `${vercelUrl}/hr/ticket.html?id=${currentTicketId}`;
     const emailPayload = {
