@@ -1,4 +1,5 @@
-// employee-tickets.js
+// employee-tickets.js – updated to hide new tickets from HR dashboard
+
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let employeeId = null;
 let employeeName = '';
@@ -74,7 +75,6 @@ async function loadTickets() {
             <span class="badge ${statusClass}">${ticket.status}</span>
         `;
         
-        // 🔗 Navigate with ticket ID in URL
         ticketDiv.addEventListener('click', () => {
             window.location.href = `/employee/chat.html?id=${ticket.id}`;
         });
@@ -113,6 +113,7 @@ async function init() {
         
         const category = typeof classifyIssue === 'function' ? classifyIssue(summary) : 'general'; 
         
+        // ✅ New ticket is hidden from HR (visible_to_hr = false)
         const { data: newTicket, error: createError } = await supabaseClient
             .from('tickets')
             .insert({ 
@@ -120,7 +121,8 @@ async function init() {
                 status: 'open', 
                 bot_active: true, 
                 issue_summary: summary,
-                category: category
+                category: category,
+                visible_to_hr: false    // 👈 hide from HR dashboard
             })
             .select()
             .single();
@@ -131,7 +133,6 @@ async function init() {
             return;
         }
         
-        // 🔗 Navigate with ticket ID in URL
         window.location.href = `/employee/chat.html?id=${newTicket.id}`;
     });
 
