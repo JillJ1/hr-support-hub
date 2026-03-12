@@ -37,14 +37,28 @@ function formatDate(dateStr) {
 
 // ==================== NOTIFICATION BADGE ====================
 async function updateNotificationCount() {
-    const { count, error } = await supabaseClient
-        .from('tickets')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['open', 'escalated']);
-    if (!error) {
+    try {
+        const { count: openCount, error: ticketError } = await supabaseClient
+            .from('tickets')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'open')
+            .eq('visible_to_hr', true);   // 👈 added filter
+
+        const { count: taskCount, error: taskError } = await supabaseClient
+            .from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending');
+
+        if (ticketError || taskError) throw new Error('Count error');
+
+        const total = (openCount || 0) + (taskCount || 0);
         const badge = document.getElementById('notif-badge');
-        badge.textContent = count;
-        badge.style.display = count > 0 ? 'flex' : 'none';
+        badge.textContent = total;
+        badge.style.display = total > 0 ? 'flex' : 'none';
+
+        loadNotificationItems();
+    } catch (err) {
+        console.error('Error updating notification count:', err);
     }
 }
 
@@ -96,8 +110,8 @@ async function loadRecentCases() {
         .limit(5);
 
     const now = new Date();
+    let startDate;
     if (filter !== 'all') {
-        let startDate;
         if (filter === 'day') {
             startDate = new Date(now.setHours(0,0,0,0));
         } else if (filter === 'week') {
@@ -110,7 +124,8 @@ async function loadRecentCases() {
     }
 
     const { data: tickets, error } = await query;
-    console.log('loadRecentCases – tickets count:', tickets?.length, 'filtered tickets:', tickets);
+    console.log('loadRecentCases – filter:', filter, 'startDate:', startDate);
+    console.log('loadRecentCases – returned tickets:', tickets);
 
     if (error) {
         console.error(error);
@@ -1565,6 +1580,7 @@ async function loadNotificationItems() {
             .from('tickets')
             .select('id, issue_summary, employees(full_name)')
             .eq('status', 'open')
+            .eq('visible_to_hr', true)   // 👈 added filter
             .order('created_at', { ascending: false })
             .limit(5);
 
@@ -1607,31 +1623,6 @@ async function loadNotificationItems() {
         dropdown.innerHTML = html;
     } catch (err) {
         console.error('Error loading notifications:', err);
-    }
-}
-
-async function updateNotificationCount() {
-    try {
-        const { count: openCount, error: ticketError } = await supabaseClient
-            .from('tickets')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'open');
-
-        const { count: taskCount, error: taskError } = await supabaseClient
-            .from('tasks')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'pending');
-
-        if (ticketError || taskError) throw new Error('Count error');
-
-        const total = (openCount || 0) + (taskCount || 0);
-        const badge = document.getElementById('notif-badge');
-        badge.textContent = total;
-        badge.style.display = total > 0 ? 'flex' : 'none';
-
-        loadNotificationItems();
-    } catch (err) {
-        console.error('Error updating notification count:', err);
     }
 }
 
