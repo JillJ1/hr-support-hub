@@ -450,25 +450,33 @@
                 </div>
             </div>
             
-            <div id="column-selector" class="column-selector-dropdown" style="display: none; position: absolute; background: white; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 10px 15px; z-index: 100; max-height: 400px; overflow-y: auto;">    <div class="dropdown-header">Show/Hide Columns</div>    <label><input type="checkbox" class="col-toggle" data-col="0" checked> ID</label>    <label><input type="checkbox" class="col-toggle" data-col="1"> Auth ID</label>    <label><input type="checkbox" class="col-toggle" data-col="2"> Photo</label>    <label><input type="checkbox" class="col-toggle" data-col="3" checked> Full Name</label>    <label><input type="checkbox" class="col-toggle" data-col="4" checked> Email</label>    <label><input type="checkbox" class="col-toggle" data-col="5"> Phone</label>    <label><input type="checkbox" class="col-toggle" data-col="6"> Home Phone</label>    <label><input type="checkbox" class="col-toggle" data-col="7"> Marital Status</label>    <label><input type="checkbox" class="col-toggle" data-col="8" checked> Position</label>    <label><input type="checkbox" class="col-toggle" data-col="9"> Work Location</label>    <label><input type="checkbox" class="col-toggle" data-col="10" checked> Department</label>    <label><input type="checkbox" class="col-toggle" data-col="11"> Start Date</label>    <label><input type="checkbox" class="col-toggle" data-col="12"> Emergency Contact</label></div>
+            <div id="column-selector" class="column-selector-dropdown" style="display: none;">
+                <div class="dropdown-header">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 600;">
+                        <input type="checkbox" id="select-all-columns" checked> Select All
+                    </label>
+                </div>
+                <div class="column-list">
+                    <!-- checkboxes will be populated by JS -->
+                </div>
+                <div class="dropdown-footer" style="padding: 8px 15px; border-top: 1px solid #e5e5ea; display: flex; justify-content: flex-end;">
+                    <button class="btn btn-primary btn-sm" onclick="applyColumnVisibility()">Apply</button>
+                </div>
+            </div>
 
             <div class="widget-card">
                 <div class="table-controls">
                     <input type="text" id="emp-search" class="filter-input" placeholder="Filter by name or ID..." style="width: 250px;" onkeyup="filterEmployees()">
-                    <select id="emp-dept" class="filter-select" onchange="filterEmployees()">
-                        <option value="All Departments">All Departments</option>
-                        <option value="Registered Nurse">Nursing</option>
-                        <option value="Pharmacist">Pharmacy</option>
-                        <option value="Radiology">Radiology</option>
-                        <option value="Physical Therapist">Therapy</option>
-                    </select>
                 </div>
                 <div class="table-responsive">
                     <table class="data-table" id="emp-table">
                         <thead>
                             <tr><th class="sortable" onclick="sortTable('emp-table', 0)">ID</th><th class="sortable" onclick="sortTable('emp-table', 1)">Full Name</th><th>Contact</th><th class="sortable" onclick="sortTable('emp-table', 3)">Position</th><th class="sortable" onclick="sortTable('emp-table', 4)">Manager</th><th class="sortable" onclick="sortTable('emp-table', 5, true)">Tenure (Yrs)</th></tr>
                         </thead>
-                        <tbody></tbody>
+                        <tbody id="filter-row" style="background: #f8fafc;">
+                            <!-- Filter inputs will be inserted here by JavaScript -->
+                        </tbody>
+                        <tbody id="emp-table-body"></tbody>
                     </table>
                 </div>
             </div>
