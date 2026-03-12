@@ -1,4 +1,4 @@
-// employee-chat.js – updated with escalation visibility and scroll fix
+// employee-chat.js – updated with escalation visibility, rating prompt, and scroll fix
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
@@ -199,11 +199,11 @@ async function sendMessage() {
     input.focus();
 }
 
+// ✅ FIX: Make ticket visible to HR on escalation
 async function escalateToHR() {
-    // ✅ Make ticket visible to HR
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ priority: 'high', visible_to_hr: true })
+        .update({ priority: 'high', visible_to_hr: true })  // 👈 added visible_to_hr
         .eq('id', currentTicketId);
 
     if (error) {
@@ -243,6 +243,73 @@ async function escalateToHR() {
 
     document.getElementById('escalate-btn').disabled = true;
     document.getElementById('escalate-btn').textContent = 'Escalated';
+}
+
+// ⭐ Rating prompt
+function showRatingPrompt() {
+    const messagesDiv = document.getElementById('messages');
+    const existing = document.getElementById('rating-prompt');
+    if (existing) existing.remove();
+
+    const promptDiv = document.createElement('div');
+    promptDiv.id = 'rating-prompt';
+    promptDiv.className = 'rating-prompt';
+    promptDiv.innerHTML = `
+        <p><strong>How would you rate your experience with this support ticket?</strong></p>
+        <div class="rating-stars" id="rating-stars">
+            <span class="rating-star" data-value="1">★</span>
+            <span class="rating-star" data-value="2">★</span>
+            <span class="rating-star" data-value="3">★</span>
+            <span class="rating-star" data-value="4">★</span>
+            <span class="rating-star" data-value="5">★</span>
+        </div>
+        <textarea id="rating-feedback" class="rating-feedback" placeholder="Optional feedback..." rows="3"></textarea>
+        <button id="rating-submit" class="rating-submit">Submit Rating</button>
+    `;
+    messagesDiv.appendChild(promptDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    const stars = document.querySelectorAll('.rating-star');
+    let selectedRating = 0;
+    stars.forEach(star => {
+        star.addEventListener('click', () => {
+            const value = parseInt(star.dataset.value);
+            selectedRating = value;
+            stars.forEach((s, i) => {
+                if (i < value) s.classList.add('selected');
+                else s.classList.remove('selected');
+            });
+        });
+    });
+
+    document.getElementById('rating-submit').addEventListener('click', async () => {
+        if (selectedRating === 0) {
+            alert('Please select a rating.');
+            return;
+        }
+        const feedback = document.getElementById('rating-feedback').value;
+        const submitBtn = document.getElementById('rating-submit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+
+        const { error } = await supabaseClient
+            .from('tickets')
+            .update({ rating: selectedRating, feedback_comment: feedback })
+            .eq('id', currentTicketId);
+
+        if (error) {
+            console.error('Error saving rating:', error);
+            alert('Failed to save rating. Please try again.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Rating';
+        } else {
+            promptDiv.remove();
+            displayMessage({
+                sender_type: 'bot',
+                content: 'Thank you for your feedback! We appreciate your input.'
+            });
+        }
+    });
 }
 
 async function init() {
@@ -363,7 +430,5 @@ function showToast(message, type = 'info') {
     // Simple toast – you can replace with your preferred implementation
     alert(message);
 }
-
-// Rating prompt functions (unchanged) ...
 
 init();
