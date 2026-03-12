@@ -281,10 +281,14 @@ body {
     background: #0f5b8c;
     color: white;
 }
-.hr-view .message.employee,
-.hr-view .message.bot {
+.hr-view .message.employee {
     align-self: flex-start;
     background: #f1f5f9;
+    color: #1e2f3e;
+}
+.hr-view .message.bot {
+    align-self: flex-start;
+    background: #e0f2fe; /* distinct bot color */
     color: #1e2f3e;
 }
 
