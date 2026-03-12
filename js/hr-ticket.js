@@ -1,4 +1,4 @@
-// hr-ticket.js – fully upgraded with scroll fix, auto‑message, notes improvements, task duplication fix, email, etc.
+// hr-ticket.js – fully upgraded with scroll fix, auto‑message, notes improvements, task duplication fix, email, and create similar case
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -448,6 +448,41 @@ async function resolve() {
     }
 }
 
+// ✅ Create a similar case for the same employee
+async function createSimilarCase() {
+    const emp = currentTicket?.employees;
+    if (!emp) {
+        showToast('No employee data found', 'error');
+        return;
+    }
+
+    const summary = prompt('Enter issue summary for new case (similar to current):', currentTicket.issue_summary || '');
+    if (!summary) return;
+
+    const category = currentTicket.category || 'Other';
+    const { data: newTicket, error } = await supabaseClient
+        .from('tickets')
+        .insert({
+            employee_id: emp.id,
+            issue_summary: summary,
+            category: category,
+            status: 'open',
+            bot_active: true,
+            visible_to_hr: true
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating case:', error);
+        showToast('Error creating case: ' + error.message, 'error');
+    } else {
+        showToast('New case created', 'success');
+        // Open the new case in a new tab
+        window.open(`/hr/ticket.html?id=${newTicket.id}`, '_blank');
+    }
+}
+
 async function updateCategory(newCategory) {
     if (!currentTicketId) {
         showToast('No ticket loaded', 'error');
@@ -604,6 +639,7 @@ async function init() {
 window.toggleNotes = toggleNotes;
 window.closeModal = closeModal;
 window.updateCategory = updateCategory;
+window.createSimilarCase = createSimilarCase; // 👈 expose globally
 
 init();
 
