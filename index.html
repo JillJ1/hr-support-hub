@@ -92,6 +92,21 @@
             background: #074a70;
         }
 
+        .forgot-link {
+            text-align: center;
+            margin-top: 16px;
+        }
+
+        .forgot-link a {
+            color: #0a5b8c;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .forgot-link a:hover {
+            text-decoration: underline;
+        }
+
         #error-message {
             color: #b71c1c;
             text-align: center;
@@ -115,6 +130,9 @@
             </div>
             <button type="submit">Log In</button>
         </form>
+        <div class="forgot-link">
+            <a href="#" onclick="forgotPassword(); return false;">Forgot password?</a>
+        </div>
         <p id="error-message"></p>
     </div>
 
