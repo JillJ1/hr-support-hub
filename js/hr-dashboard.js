@@ -59,7 +59,8 @@ async function loadKPIs() {
         const { count: openCases } = await supabaseClient
             .from('tickets')
             .select('*', { count: 'exact', head: true })
-            .eq('status', 'open');
+            .eq('status', 'open')
+            .eq('visible_to_hr', true);
         document.getElementById('kpi-open-cases').textContent = openCases || '0';
 
         const { count: pendingTasks } = await supabaseClient
@@ -90,6 +91,7 @@ async function loadRecentCases() {
             *,
             employees (full_name)
         `)
+        .eq('visible_to_hr', true)
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -246,6 +248,7 @@ async function loadCasesTable(page = 1, pageSize = 50) {
             *,
             employees (full_name)
         `, { count: 'exact' })
+        .eq('visible_to_hr', true)
         .order('created_at', { ascending: false })
         .range(from, to);
 
@@ -348,7 +351,7 @@ async function assignTicket(button) {
 
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ assigned_to: currentHrId, status: 'inprogress' })
+        .update({ assigned_to: currentHrId, status: 'inprogress', visible_to_hr: true })
         .eq('id', ticketId);
 
     if (error) {
@@ -387,7 +390,7 @@ async function updateReassign(select) {
     const hrId = select.value || null;
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ assigned_to: hrId })
+        .update({ assigned_to: hrId, visible_to_hr: true })
         .eq('id', ticketId);
     if (error) {
         showToast('Error reassigning: ' + error.message, 'error');
@@ -594,7 +597,8 @@ async function submitNewTicket(e) {
             issue_summary: summary,
             category: category,
             status: ticketStatus,
-            assigned_to: assignedTo
+            assigned_to: assignedTo,
+            visible_to_hr: true
         })
         .select()
         .single();
