@@ -230,9 +230,62 @@
             background: #e5e5ea;
             color: #8e8e93;
         }
+
+        /* ==================== RATING STYLES ==================== */
+        .rating-prompt {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 10px 0;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+        .rating-stars {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin: 12px 0;
+            font-size: 2rem;
+            cursor: pointer;
+        }
+        .rating-star {
+            color: #d1d5db;
+            transition: color 0.2s;
+        }
+        .rating-star.selected,
+        .rating-star:hover {
+            color: #fbbf24;
+        }
+        .rating-star:hover ~ .rating-star {
+            color: #d1d5db;
+        }
+        .rating-feedback {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-top: 8px;
+            resize: vertical;
+        }
+        .rating-submit {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            margin-top: 8px;
+            cursor: pointer;
+        }
+        .rating-submit:hover {
+            background: var(--primary-blue-dark);
+        }
+        .rating-submit:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+        }
     </style>
 </head>
-<body>
+<body class="employee-view"> <!-- 👈 Added class for correct message alignment -->
     <header>
         <div class="header-left">
             <button id="back-btn" class="back-btn">←</button>
