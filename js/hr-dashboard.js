@@ -110,6 +110,7 @@ async function loadRecentCases() {
     }
 
     const { data: tickets, error } = await query;
+    console.log('loadRecentCases – tickets count:', tickets?.length, 'filtered tickets:', tickets);
 
     if (error) {
         console.error(error);
@@ -280,6 +281,8 @@ async function loadCasesTable(page = 1, pageSize = 50) {
         .eq('visible_to_hr', true)           // 👈 only show visible tickets
         .order('created_at', { ascending: false })
         .range(from, to);
+
+    console.log('loadCasesTable – tickets count:', tickets?.length, 'first few:', tickets?.slice(0,2));
 
     if (error) {
         console.error(error);
@@ -1844,12 +1847,17 @@ async function init() {
         .channel('tickets-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
             console.log('🔄 Ticket change detected at', new Date().toLocaleTimeString());
-            if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+            const dashboardHidden = document.getElementById('view-dashboard').classList.contains('hidden');
+            const casesHidden = document.getElementById('view-cases').classList.contains('hidden');
+            console.log('Dashboard hidden?', dashboardHidden, '| Cases hidden?', casesHidden);
+            if (!dashboardHidden) {
+                console.log('Reloading dashboard sections...');
                 loadRecentCases();
                 loadKPIs();
-                loadDashboardCharts(); // refresh charts
+                loadDashboardCharts();
             }
-            if (!document.getElementById('view-cases').classList.contains('hidden')) {
+            if (!casesHidden) {
+                console.log('Reloading cases table...');
                 loadCasesTable();
             }
             updateNotificationCount();
