@@ -235,7 +235,7 @@ async function loadDepartments() {
 // ==================== EMPLOYEE DIRECTORY ====================
 async function loadEmployeeDirectory(page = 1, pageSize = 50) {
     const tbody = document.querySelector('#emp-table tbody');
-    tbody.innerHTML = '<tr><td colspan="6"><div class="spinner"></div> Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13"><div class="spinner"></div> Loading...</td></tr>';
 
     // Pagination: fetch pageSize records
     const from = (page - 1) * pageSize;
@@ -248,7 +248,7 @@ async function loadEmployeeDirectory(page = 1, pageSize = 50) {
 
     if (error) {
         console.error(error);
-        tbody.innerHTML = '<tr><td colspan="6">Error loading employees</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13">Error loading employees</td></tr>';
         return;
     }
 
@@ -263,15 +263,24 @@ async function loadEmployeeDirectory(page = 1, pageSize = 50) {
         tr.onclick = () => viewEmployeeProfile(emp.id, emp.full_name, emp.email, emp.position, emp.auth_id);
         tr.innerHTML = `
             <td>${emp.id.substr(0,8)}</td>
+            <td>${escapeHTML(emp.auth_id || '')}</td>
+            <td></td>
             <td>${escapeHTML(emp.full_name)}</td>
             <td>${escapeHTML(emp.email || '')}</td>
+            <td>${escapeHTML(emp.phone || '')}</td>
+            <td>${escapeHTML(emp.home_phone || '')}</td>
+            <td>${escapeHTML(emp.marital_status || '')}</td>
             <td>${escapeHTML(emp.position || '')}</td>
+            <td>${escapeHTML(emp.work_location || '')}</td>
             <td>${escapeHTML(emp.department || '')}</td>
             <td>${emp.start_date ? formatDate(emp.start_date) : ''}</td>
+            <td>${escapeHTML(emp.emergency_contact || '')}</td>
         `;
         tbody.appendChild(tr);
     });
-    // Optionally add pagination controls here
+
+    // After populating tbody, apply column visibility
+    applyColumnVisibility();
 }
 
 // ==================== FULL CASES TABLE (with N+1 fix) ====================
@@ -877,6 +886,49 @@ function filterCases() {
         
         row.style.display = matchesStatus && matchesAssign ? '' : 'none';
     });
+}
+
+// ==================== COLUMN VISIBILITY ====================
+function toggleColumnSelector() {
+    const selector = document.getElementById('column-selector');
+    if (selector.style.display === 'none' || !selector.style.display) {
+        // Position dropdown near the "Columns" button
+        const btn = event.target;
+        const rect = btn.getBoundingClientRect();
+        selector.style.top = rect.bottom + window.scrollY + 'px';
+        selector.style.left = rect.left + window.scrollX + 'px';
+        selector.style.display = 'block';
+    } else {
+        selector.style.display = 'none';
+    }
+}
+
+function applyColumnVisibility() {
+    const checkboxes = document.querySelectorAll('.col-toggle');
+    checkboxes.forEach(cb => {
+        const colIndex = parseInt(cb.dataset.col);
+        const visible = cb.checked;
+        // Hide/show all th and td with that column index
+        document.querySelectorAll(`#emp-table th:nth-child(${colIndex+1}), #emp-table td:nth-child(${colIndex+1})`).forEach(cell => {
+            cell.style.display = visible ? '' : 'none';
+        });
+    });
+    // Save preferences to localStorage
+    const prefs = {};
+    checkboxes.forEach(cb => prefs[cb.dataset.col] = cb.checked);
+    localStorage.setItem('employeeColPrefs', JSON.stringify(prefs));
+}
+
+function loadColumnPreferences() {
+    const saved = localStorage.getItem('employeeColPrefs');
+    if (saved) {
+        const prefs = JSON.parse(saved);
+        Object.keys(prefs).forEach(col => {
+            const cb = document.querySelector(`.col-toggle[data-col="${col}"]`);
+            if (cb) cb.checked = prefs[col];
+        });
+    }
+    applyColumnVisibility();
 }
 
 // ==================== LOGOUT ====================
@@ -1971,6 +2023,23 @@ async function init() {
     const defaultMonth = document.querySelector('.analytics-filter-btn[data-filter="month"]');
     if (defaultMonth) defaultMonth.classList.add('active');
 
+    // Column visibility toggles
+    document.querySelectorAll('.col-toggle').forEach(cb => {
+        cb.addEventListener('change', applyColumnVisibility);
+    });
+    loadColumnPreferences();
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        const selector = document.getElementById('column-selector');
+        const btn = e.target.closest('.btn'); // assuming the Columns button has class 'btn'
+        if (!btn || !btn.textContent.includes('Columns')) {
+            if (selector && !selector.contains(e.target)) {
+                selector.style.display = 'none';
+            }
+        }
+    });
+
     // Expose CSV functions globally
     window.exportEmployeesCSV = exportEmployeesCSV;
     window.openImportCSVModal = openImportCSVModal;
@@ -2000,6 +2069,7 @@ window.deleteTask = deleteTask;
 window.toggleDropdown = toggleDropdown;
 window.filterEmployees = filterEmployees;
 window.filterCases = filterCases;
+window.toggleColumnSelector = toggleColumnSelector;
 window.sortTable = sortTable;
 window.closeModal = closeModal;
 window.signOut = signOut;
