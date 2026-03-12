@@ -1,5 +1,5 @@
 // hr-ticket.js – upgraded with internal notes height fix, task creation on reassign,
-// duplicate message fix, resolved_at on dropdown close, and better email logging
+// duplicate message fix, resolved_at on dropdown close, and secure email notification
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -302,7 +302,7 @@ async function changeStatus() {
     }
 }
 
-// ✅ FIX: Improved email error logging
+// ✅ NEW: Secure email notification – no chat logs, just a link
 async function resolve() {
     try {
         const { error } = await supabaseClient
@@ -318,14 +318,26 @@ async function resolve() {
             updateStatusPill('closed');
 
             const employeeEmail = currentTicket.employees?.email;
+            const employeeName = currentTicket.employees?.full_name || 'Employee';
+            const issueSummary = currentTicket.issue_summary || 'your request';
             console.log('Employee email:', employeeEmail);
+
             if (employeeEmail) {
-                const chatLogHtml = await formatChatLog(currentTicketId);
+                // Create a link to the ticket page (using current origin)
+                const ticketLink = `${window.location.origin}/employee/chat.html?id=${currentTicketId}`;
+
                 const emailPayload = {
                     to: employeeEmail,
                     subject: `Your support ticket #${currentTicketId.substr(0,8)} has been resolved`,
-                    html: chatLogHtml
+                    html: `
+                        <p>Hello ${escapeHTML(employeeName)},</p>
+                        <p>Your ticket regarding "<strong>${escapeHTML(issueSummary)}</strong>" has been marked as resolved.</p>
+                        <p>You can view the full conversation and any updates by logging into the HR Support Portal:</p>
+                        <p><a href="${ticketLink}">View Your Ticket</a></p>
+                        <p>Thank you,<br>HR Team</p>
+                    `
                 };
+
                 try {
                     const response = await fetch(
                         `${supabaseUrl}/functions/v1/send-email`,
