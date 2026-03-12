@@ -1,4 +1,4 @@
-// hr-ticket.js – upgraded with task assignment fix and email debugging
+// hr-ticket.js – upgraded with task assignment fix, email debugging, and unified email sending
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -301,7 +301,7 @@ async function takeOver() {
     }
 }
 
-// ✅ FIX: Set resolved_at when closing via dropdown
+// ✅ FIX: Set resolved_at when closing via dropdown and send email
 async function changeStatus() {
     const newStatus = document.getElementById('status-dropdown').value;
     const updateData = { status: newStatus };
@@ -321,10 +321,82 @@ async function changeStatus() {
     } else {
         showToast(`Status changed to ${newStatus}`, 'success');
         updateStatusPill(newStatus);
+
+        // ✅ If closed, send email notification
+        if (newStatus === 'closed') {
+            await sendResolutionEmail();
+        }
     }
 }
 
-// ✅ Secure email notification – no chat logs, just a link, with detailed logging
+// ✅ Extracted email sending logic
+async function sendResolutionEmail() {
+    // Fetch employee email directly to ensure it's fresh
+    const { data: emp, error: empError } = await supabaseClient
+        .from('employees')
+        .select('email, full_name')
+        .eq('id', currentTicket.employee_id)
+        .single();
+
+    if (empError) {
+        console.error('Error fetching employee:', empError);
+        showToast('Could not fetch employee email', 'error');
+        return;
+    }
+
+    const employeeEmail = emp?.email;
+    const employeeName = emp?.full_name || 'Employee';
+    const issueSummary = currentTicket.issue_summary || 'your request';
+    console.log('Employee email:', employeeEmail);
+
+    if (!employeeEmail) {
+        console.log('No employee email found');
+        showToast('Employee has no email address', 'error');
+        return;
+    }
+
+    // Create a link to the ticket page (using current origin)
+    const ticketLink = `${window.location.origin}/employee/chat.html?id=${currentTicketId}`;
+
+    const emailPayload = {
+        to: employeeEmail,
+        subject: `Your support ticket #${currentTicketId.substr(0,8)} has been resolved`,
+        html: `
+            <p>Hello ${escapeHTML(employeeName)},</p>
+            <p>Your ticket regarding "<strong>${escapeHTML(issueSummary)}</strong>" has been marked as resolved.</p>
+            <p>You can view the full conversation and any updates by logging into the HR Support Portal:</p>
+            <p><a href="${ticketLink}">View Your Ticket</a></p>
+            <p>Thank you,<br>HR Team</p>
+        `
+    };
+
+    try {
+        console.log('Sending resolution email with payload:', emailPayload);
+        const response = await fetch(
+            `${supabaseUrl}/functions/v1/send-email`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(emailPayload)
+            }
+        );
+        const responseText = await response.text();
+        console.log('Email response status:', response.status);
+        console.log('Email response text:', responseText);
+        if (!response.ok) {
+            console.error('Email send failed:', response.status, responseText);
+            showToast('Email notification failed', 'error');
+        } else {
+            console.log('Email sent successfully:', responseText);
+            showToast('Resolution email sent', 'success');
+        }
+    } catch (err) {
+        console.error('Error sending email:', err);
+        showToast('Email notification error', 'error');
+    }
+}
+
+// ✅ Updated resolve to use sendResolutionEmail
 async function resolve() {
     try {
         const { error } = await supabaseClient
@@ -338,69 +410,7 @@ async function resolve() {
         } else {
             showToast('Ticket resolved', 'success');
             updateStatusPill('closed');
-
-            // Fetch employee email directly to ensure it's fresh
-            const { data: emp, error: empError } = await supabaseClient
-                .from('employees')
-                .select('email, full_name')
-                .eq('id', currentTicket.employee_id)
-                .single();
-
-            if (empError) {
-                console.error('Error fetching employee:', empError);
-                showToast('Could not fetch employee email', 'error');
-                return;
-            }
-
-            const employeeEmail = emp?.email;
-            const employeeName = emp?.full_name || 'Employee';
-            const issueSummary = currentTicket.issue_summary || 'your request';
-            console.log('Employee email:', employeeEmail);
-
-            if (employeeEmail) {
-                // Create a link to the ticket page (using current origin)
-                const ticketLink = `${window.location.origin}/employee/chat.html?id=${currentTicketId}`;
-
-                const emailPayload = {
-                    to: employeeEmail,
-                    subject: `Your support ticket #${currentTicketId.substr(0,8)} has been resolved`,
-                    html: `
-                        <p>Hello ${escapeHTML(employeeName)},</p>
-                        <p>Your ticket regarding "<strong>${escapeHTML(issueSummary)}</strong>" has been marked as resolved.</p>
-                        <p>You can view the full conversation and any updates by logging into the HR Support Portal:</p>
-                        <p><a href="${ticketLink}">View Your Ticket</a></p>
-                        <p>Thank you,<br>HR Team</p>
-                    `
-                };
-
-                try {
-                    console.log('Sending email with payload:', emailPayload);
-                    const response = await fetch(
-                        `${supabaseUrl}/functions/v1/send-email`,
-                        {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(emailPayload)
-                        }
-                    );
-                    const responseText = await response.text();
-                    console.log('Email response status:', response.status);
-                    console.log('Email response text:', responseText);
-                    if (!response.ok) {
-                        console.error('Email send failed:', response.status, responseText);
-                        showToast('Email notification failed', 'error');
-                    } else {
-                        console.log('Email sent successfully:', responseText);
-                        showToast('Resolution email sent', 'success');
-                    }
-                } catch (err) {
-                    console.error('Error sending email:', err);
-                    showToast('Email notification error', 'error');
-                }
-            } else {
-                console.log('No employee email found');
-                showToast('Employee has no email address', 'error');
-            }
+            await sendResolutionEmail();
         }
     } catch (err) {
         console.error('Unexpected error:', err);
