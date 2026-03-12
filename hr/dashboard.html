@@ -298,7 +298,7 @@
             <button id="menu-toggle" class="hamburger" aria-label="Open Menu">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
-            <h1>Christ Hospital <span class="text-yellow">HRIS</span></h1>
+            <h1>The Christ Hospital <span class="text-yellow">HRIS</span></h1>
         </div>
         
         <div class="header-search">
@@ -443,12 +443,15 @@
             <div class="page-header">
                 <h2>Employee Directory</h2>
                 <div>
+                    <button class="btn btn-secondary" onclick="toggleColumnSelector()">Columns</button>
                     <button class="btn btn-secondary" onclick="exportEmployeesCSV()">Export CSV</button>
                     <button class="btn btn-primary" onclick="openImportCSVModal()">Import CSV</button>
                     <button class="btn bg-yellow" onclick="addEmployee()">Add Employee</button>
                 </div>
             </div>
             
+            <div id="column-selector" class="column-selector-dropdown" style="display: none; position: absolute; background: white; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 10px 15px; z-index: 100; max-height: 400px; overflow-y: auto;">    <div class="dropdown-header">Show/Hide Columns</div>    <label><input type="checkbox" class="col-toggle" data-col="0" checked> ID</label>    <label><input type="checkbox" class="col-toggle" data-col="1"> Auth ID</label>    <label><input type="checkbox" class="col-toggle" data-col="2"> Photo</label>    <label><input type="checkbox" class="col-toggle" data-col="3" checked> Full Name</label>    <label><input type="checkbox" class="col-toggle" data-col="4" checked> Email</label>    <label><input type="checkbox" class="col-toggle" data-col="5"> Phone</label>    <label><input type="checkbox" class="col-toggle" data-col="6"> Home Phone</label>    <label><input type="checkbox" class="col-toggle" data-col="7"> Marital Status</label>    <label><input type="checkbox" class="col-toggle" data-col="8" checked> Position</label>    <label><input type="checkbox" class="col-toggle" data-col="9"> Work Location</label>    <label><input type="checkbox" class="col-toggle" data-col="10" checked> Department</label>    <label><input type="checkbox" class="col-toggle" data-col="11"> Start Date</label>    <label><input type="checkbox" class="col-toggle" data-col="12"> Emergency Contact</label></div>
+
             <div class="widget-card">
                 <div class="table-controls">
                     <input type="text" id="emp-search" class="filter-input" placeholder="Filter by name or ID..." style="width: 250px;" onkeyup="filterEmployees()">
