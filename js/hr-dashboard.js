@@ -9,6 +9,9 @@ let currentHrIdForDocs = null; // for meeting docs
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
 
+// DB Column mapping for the employee table to support rendering filter rows.
+const empColumns = ['id', 'auth_id', null, 'full_name', 'email', 'phone', 'home_phone', 'marital_status', 'position', 'work_location', 'department', 'start_date', 'emergency_contact'];
+
 // ==================== TOAST NOTIFICATION ====================
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
@@ -75,7 +78,7 @@ async function loadKPIs() {
             .from('tickets')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'open')
-            .eq('visible_to_hr', true);       // 👈 only visible open tickets
+            .eq('visible_to_hr', true);        // 👈 only visible open tickets
         document.getElementById('kpi-open-cases').textContent = openCases || '0';
 
         const { count: pendingTasks } = await supabaseClient
@@ -233,18 +236,25 @@ async function loadDepartments() {
 }
 
 // ==================== EMPLOYEE DIRECTORY ====================
-async function loadEmployeeDirectory(page = 1, pageSize = 50) {
+async function loadEmployeeDirectory(filters = {}, page = 1, pageSize = 50) {
     const tbody = document.querySelector('#emp-table tbody');
     tbody.innerHTML = '<tr><td colspan="13"><div class="spinner"></div> Loading...</td></tr>';
 
-    // Pagination: fetch pageSize records
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    const { data: employees, error, count } = await supabaseClient
+    
+    let query = supabaseClient
         .from('employees')
-        .select('*', { count: 'exact' })
-        .order('full_name')
-        .range(from, to);
+        .select('*', { count: 'exact' });
+
+    // Apply Server-Side Filters
+    for (const [col, val] of Object.entries(filters)) {
+        if (val) query = query.ilike(col, `%${val}%`);
+    }
+
+    query = query.order('full_name').range(from, to);
+
+    const { data: employees, error, count } = await query;
 
     if (error) {
         console.error(error);
@@ -280,7 +290,141 @@ async function loadEmployeeDirectory(page = 1, pageSize = 50) {
     });
 
     // After populating tbody, apply column visibility
-    applyColumnVisibility();
+    loadColumnPreferences();
+}
+
+async function loadEmployeeDirectoryWithFilters(filters, page = 1) {
+    return loadEmployeeDirectory(filters, page);
+}
+
+// ==================== FILTER FUNCTIONS ====================
+function renderFilterRow() {
+    const thead = document.querySelector('#emp-table thead');
+    if (!thead) return;
+
+    let filterRow = document.getElementById('emp-filter-row');
+    if (!filterRow) {
+        filterRow = document.createElement('tr');
+        filterRow.id = 'emp-filter-row';
+        thead.appendChild(filterRow);
+    }
+    filterRow.innerHTML = '';
+
+    const headers = thead.querySelectorAll('tr:first-child th');
+    headers.forEach((th, index) => {
+        const td = document.createElement('th');
+        td.style.display = th.style.display; 
+        if (empColumns[index]) {
+            td.innerHTML = `<input type="text" class="emp-filter-input" data-dbcol="${empColumns[index]}" placeholder="Filter..." style="width: 100%; box-sizing: border-box; padding: 4px; font-weight: normal;">`;
+            
+            // Allow Enter key to quickly trigger applyFilters
+            const input = td.querySelector('input');
+            input.addEventListener('keypress', (e) => {
+                if(e.key === 'Enter') applyFilters();
+            });
+        }
+        filterRow.appendChild(td);
+    });
+}
+
+function applyFilters() {
+    const inputs = document.querySelectorAll('.emp-filter-input');
+    const filters = {};
+    inputs.forEach(input => {
+        if (input.value.trim() !== '') {
+            filters[input.dataset.dbcol] = input.value.trim();
+        }
+    });
+    loadEmployeeDirectoryWithFilters(filters, 1);
+}
+
+// ==================== COLUMN VISIBILITY ====================
+function toggleColumnSelector(e) {
+    const ev = e || window.event;
+    const selector = document.getElementById('column-selector');
+    if (!selector) return;
+
+    if (selector.style.display === 'none' || !selector.style.display) {
+        const btn = ev?.target;
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            selector.style.top = rect.bottom + window.scrollY + 'px';
+            selector.style.left = rect.left + window.scrollX + 'px';
+        }
+        selector.style.display = 'block';
+        buildColumnCheckboxes();
+    } else {
+        selector.style.display = 'none';
+    }
+}
+
+function buildColumnCheckboxes() {
+    // Assuming you have an inner container #column-selector-options inside #column-selector in HTML
+    let selectorDiv = document.getElementById('column-selector-options');
+    if (!selectorDiv) {
+        // Fallback if not structurally present, use the container itself
+        selectorDiv = document.getElementById('column-selector');
+        // Clear anything except action buttons if needed, but best if HTML provides a dedicated div
+    }
+    selectorDiv.innerHTML = '';
+
+    const headers = document.querySelectorAll('#emp-table thead tr:first-child th');
+    const saved = localStorage.getItem('employeeColPrefs');
+    const prefs = saved ? JSON.parse(saved) : {};
+
+    headers.forEach((th, index) => {
+        const text = th.textContent.trim();
+        if (!text) return; // skip empty headers
+
+        const isChecked = prefs[index] !== undefined ? prefs[index] : true;
+        const label = document.createElement('label');
+        label.style.display = 'block';
+        label.style.padding = '4px 8px';
+        label.style.cursor = 'pointer';
+        label.innerHTML = `<input type="checkbox" class="col-toggle-temp" data-col="${index}" ${isChecked ? 'checked' : ''}> ${escapeHTML(text)}`;
+        selectorDiv.appendChild(label);
+    });
+}
+
+function applyColumnVisibility() {
+    const checkboxes = document.querySelectorAll('.col-toggle-temp');
+    if (checkboxes.length > 0) {
+        const prefs = {};
+        checkboxes.forEach(cb => {
+            prefs[cb.dataset.col] = cb.checked;
+        });
+        localStorage.setItem('employeeColPrefs', JSON.stringify(prefs));
+    }
+    
+    // Applying visibility will also re-render the filter row to align nicely
+    loadColumnPreferences();
+    toggleColumnSelector(); // close when done
+}
+
+function cancelColumnSelector() {
+    const selector = document.getElementById('column-selector');
+    if (selector) selector.style.display = 'none';
+}
+
+function loadColumnPreferences() {
+    const saved = localStorage.getItem('employeeColPrefs');
+    const prefs = saved ? JSON.parse(saved) : {};
+
+    // Reset visibility to base
+    document.querySelectorAll('#emp-table th, #emp-table td').forEach(cell => {
+        cell.style.display = '';
+    });
+
+    Object.keys(prefs).forEach(col => {
+        if (prefs[col] === false) {
+            const colIndex = parseInt(col);
+            document.querySelectorAll(`#emp-table th:nth-child(${colIndex+1}), #emp-table td:nth-child(${colIndex+1})`).forEach(cell => {
+                cell.style.display = 'none';
+            });
+        }
+    });
+
+    renderFilterRow();
 }
 
 // ==================== FULL CASES TABLE (with N+1 fix) ====================
@@ -779,15 +923,42 @@ async function performSearch(query) {
     const resultsDiv = document.getElementById('search-results');
     resultsDiv.innerHTML = '<div class="dropdown-header">Quick Results</div>';
 
-    const [employees, ticketsBySummary, ticketsById, employeesById] = await Promise.all([
-        supabaseClient.from('employees').select('id, full_name').ilike('full_name', `%${query}%`).limit(5),
-        supabaseClient.from('tickets').select('id, issue_summary').ilike('issue_summary', `%${query}%`).limit(5),
-        supabaseClient.from('tickets').select('id, issue_summary').ilike('id', `%${query}%`).limit(5),
-        // If query looks like a UUID (optional), do exact match on employees.id
-        supabaseClient.from('employees').select('id, full_name').eq('id', query).limit(5)
+    // UUID Regex matching
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Tickets Query (Summary or Exact ID)
+    let ticketQuery = supabaseClient.from('tickets').select('id, issue_summary');
+    if (uuidPattern.test(query)) {
+        ticketQuery = ticketQuery.eq('id', query);
+    } else {
+        ticketQuery = ticketQuery.ilike('issue_summary', `%${query}%`);
+    }
+    ticketQuery = ticketQuery.limit(5);
+
+    // Tickets by ID Partial Fallback
+    const ticketsByIdQuery = supabaseClient.from('tickets').select('id, issue_summary').ilike('id', `%${query}%`).limit(5);
+
+    // Employees Query
+    let empQuery = supabaseClient.from('employees').select('id, full_name, email');
+    if (uuidPattern.test(query)) {
+        empQuery = empQuery.eq('id', query);
+    } else {
+        empQuery = empQuery.or(`full_name.ilike.%${query}%,email.ilike.%${query}%`);
+    }
+    empQuery = empQuery.limit(5);
+
+    // Execute queries based on what query looks like to avoid redundancy
+    const [employees, ticketsBySummary, ticketsByIdRes] = await Promise.all([
+        empQuery,
+        ticketQuery,
+        uuidPattern.test(query) ? {data: []} : ticketsByIdQuery
     ]);
 
-    if (employees.data?.length) {
+    let hasResults = false;
+
+    // Employee Results
+    if (employees.data && employees.data.length) {
+        hasResults = true;
         employees.data.forEach(emp => {
             const div = document.createElement('div');
             div.className = 'search-item';
@@ -800,7 +971,10 @@ async function performSearch(query) {
             resultsDiv.appendChild(div);
         });
     }
-    if (ticketsBySummary.data?.length) {
+
+    // Tickets Results by Exact UUID or Summary match
+    if (ticketsBySummary.data && ticketsBySummary.data.length) {
+        hasResults = true;
         ticketsBySummary.data.forEach(ticket => {
             const div = document.createElement('div');
             div.className = 'search-item';
@@ -811,34 +985,28 @@ async function performSearch(query) {
             resultsDiv.appendChild(div);
         });
     }
-    if (ticketsById.data?.length) {
-        ticketsById.data.forEach(ticket => {
-            const div = document.createElement('div');
-            div.className = 'search-item';
-            div.textContent = `🔍 ID: ${ticket.id.substr(0,8)} – ${ticket.issue_summary || 'No summary'}`;
-            div.onclick = () => {
-                window.location.href = `/hr/ticket.html?id=${ticket.id}`;
-            };
-            resultsDiv.appendChild(div);
-        });
-    }
-    if (employeesById.data?.length) {
-        employeesById.data.forEach(emp => {
-            const div = document.createElement('div');
-            div.className = 'search-item';
-            div.textContent = `🆔 ${emp.full_name} (ID match)`;
-            div.onclick = () => {
-                document.getElementById('global-search').value = emp.full_name;
-                resultsDiv.classList.remove('active');
-                viewEmployeeProfile(emp.id, emp.full_name);
-            };
-            resultsDiv.appendChild(div);
+
+    // Tickets Results by Partial ID match
+    if (ticketsByIdRes.data && ticketsByIdRes.data.length) {
+        hasResults = true;
+        ticketsByIdRes.data.forEach(ticket => {
+            // Prevent duplicates
+            if (!ticketsBySummary.data.find(t => t.id === ticket.id)) {
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                div.textContent = `🔍 ID: ${ticket.id.substr(0,8)} – ${ticket.issue_summary || 'No summary'}`;
+                div.onclick = () => {
+                    window.location.href = `/hr/ticket.html?id=${ticket.id}`;
+                };
+                resultsDiv.appendChild(div);
+            }
         });
     }
     
-    if (!employees.data?.length && !ticketsBySummary.data?.length && !ticketsById.data?.length && !employeesById.data?.length) {
+    if (!hasResults) {
         resultsDiv.innerHTML += '<div class="search-item">No results found</div>';
     }
+    
     resultsDiv.classList.add('active');
 }
 
@@ -851,21 +1019,7 @@ function toggleDropdown(id) {
     if (el) el.classList.toggle('active');
 }
 
-// ==================== FILTER FUNCTIONS ====================
-function filterEmployees() {
-    const searchTerm = document.getElementById('emp-search').value.toLowerCase();
-    const deptFilter = document.getElementById('emp-dept').value;
-    const rows = document.querySelectorAll('#emp-table tbody tr');
-
-    rows.forEach(row => {
-        const name = row.cells[1].textContent.toLowerCase();
-        const position = row.cells[3].textContent;
-        const matchesSearch = name.includes(searchTerm);
-        const matchesDept = deptFilter === 'All Departments' || position.includes(deptFilter);
-        row.style.display = matchesSearch && matchesDept ? '' : 'none';
-    });
-}
-
+// ==================== FILTER CASES ====================
 function filterCases() {
     const statusFilter = document.getElementById('case-status-filter').value;
     const assignFilter = document.getElementById('case-assign-filter').value;
@@ -886,49 +1040,6 @@ function filterCases() {
         
         row.style.display = matchesStatus && matchesAssign ? '' : 'none';
     });
-}
-
-// ==================== COLUMN VISIBILITY ====================
-function toggleColumnSelector() {
-    const selector = document.getElementById('column-selector');
-    if (selector.style.display === 'none' || !selector.style.display) {
-        // Position dropdown near the "Columns" button
-        const btn = event.target;
-        const rect = btn.getBoundingClientRect();
-        selector.style.top = rect.bottom + window.scrollY + 'px';
-        selector.style.left = rect.left + window.scrollX + 'px';
-        selector.style.display = 'block';
-    } else {
-        selector.style.display = 'none';
-    }
-}
-
-function applyColumnVisibility() {
-    const checkboxes = document.querySelectorAll('.col-toggle');
-    checkboxes.forEach(cb => {
-        const colIndex = parseInt(cb.dataset.col);
-        const visible = cb.checked;
-        // Hide/show all th and td with that column index
-        document.querySelectorAll(`#emp-table th:nth-child(${colIndex+1}), #emp-table td:nth-child(${colIndex+1})`).forEach(cell => {
-            cell.style.display = visible ? '' : 'none';
-        });
-    });
-    // Save preferences to localStorage
-    const prefs = {};
-    checkboxes.forEach(cb => prefs[cb.dataset.col] = cb.checked);
-    localStorage.setItem('employeeColPrefs', JSON.stringify(prefs));
-}
-
-function loadColumnPreferences() {
-    const saved = localStorage.getItem('employeeColPrefs');
-    if (saved) {
-        const prefs = JSON.parse(saved);
-        Object.keys(prefs).forEach(col => {
-            const cb = document.querySelector(`.col-toggle[data-col="${col}"]`);
-            if (cb) cb.checked = prefs[col];
-        });
-    }
-    applyColumnVisibility();
 }
 
 // ==================== LOGOUT ====================
@@ -1080,22 +1191,22 @@ async function loadEnhancedAnalytics(filter = 'month', startDate = null, endDate
         const rated = tickets.filter(t => t.rating !== null && t.rating !== -1);
         const avgRating = rated.length ? (rated.reduce((acc, t) => acc + t.rating, 0) / rated.length).toFixed(1) : 'N/A';
 
-let totalResponseHours = 0, responseCount = 0;
-let totalResolutionHours = 0, resolutionCount = 0;
-tickets.forEach(t => {
-    if (t.first_hr_response_at && t.created_at) {
-        const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
-        totalResponseHours += responseHours;
-        responseCount++;
-    }
-    if (t.resolved_at && t.created_at) {
-        const resolutionHours = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60);
-        totalResolutionHours += resolutionHours;
-        resolutionCount++;
-    }
-});
-const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
-const avgResolution = resolutionCount ? (totalResolutionHours / resolutionCount).toFixed(1) : 'N/A';
+        let totalResponseHours = 0, responseCount = 0;
+        let totalResolutionHours = 0, resolutionCount = 0;
+        tickets.forEach(t => {
+            if (t.first_hr_response_at && t.created_at) {
+                const responseHours = (new Date(t.first_hr_response_at) - new Date(t.created_at)) / (1000*60*60);
+                totalResponseHours += responseHours;
+                responseCount++;
+            }
+            if (t.resolved_at && t.created_at) {
+                const resolutionHours = (new Date(t.resolved_at) - new Date(t.created_at)) / (1000*60*60);
+                totalResolutionHours += resolutionHours;
+                resolutionCount++;
+            }
+        });
+        const avgResponse = responseCount ? (totalResponseHours / responseCount).toFixed(1) : 'N/A';
+        const avgResolution = resolutionCount ? (totalResolutionHours / resolutionCount).toFixed(1) : 'N/A';
         
         document.getElementById('total-tickets').textContent = total;
         document.getElementById('open-tickets').textContent = openNow;
@@ -1375,7 +1486,7 @@ function applyAnalyticsFilter() {
     loadEnhancedAnalytics('custom', start, end);
 }
 
-document.getElementById('quarter-select').addEventListener('change', function() {
+document.getElementById('quarter-select')?.addEventListener('change', function() {
     const custom = this.value === 'custom';
     document.getElementById('start-date').style.display = custom ? 'inline-block' : 'none';
     document.getElementById('end-date').style.display = custom ? 'inline-block' : 'none';
@@ -1873,7 +1984,6 @@ function openReportScheduler() {
 }
 
 function scheduleReport() {
-    // Placeholder – actual implementation would store schedule in DB and set up Edge Function.
     const name = document.getElementById('report-name').value;
     const emails = document.getElementById('report-emails').value;
     const frequency = document.getElementById('report-frequency').value;
@@ -1881,7 +1991,6 @@ function scheduleReport() {
         alert('Please fill all fields');
         return;
     }
-    // For now, just toast and close.
     showToast(`Report "${name}" scheduled ${frequency} to ${emails}`, 'success');
     closeModal('report-scheduler-modal');
 }
@@ -1925,12 +2034,15 @@ async function init() {
         }
     });
 
-    // Close dropdowns on outside click
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.header-right') && !e.target.closest('.header-search')) {
-            document.querySelectorAll('.dropdown-menu, .search-dropdown').forEach(el => el.classList.remove('active'));
-        }
-    });
+    // Event Listeners for new Features
+    const applyFiltersBtn = document.getElementById('apply-filters-btn');
+    if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', applyFilters);
+
+    const applyColsBtn = document.getElementById('apply-cols-btn');
+    if (applyColsBtn) applyColsBtn.addEventListener('click', applyColumnVisibility);
+
+    const cancelColsBtn = document.getElementById('cancel-cols-btn');
+    if (cancelColsBtn) cancelColsBtn.addEventListener('click', cancelColumnSelector);
 
     // Realtime subscriptions
     supabaseClient
@@ -1987,8 +2099,6 @@ async function init() {
     if (tourBtn) {
         tourBtn.addEventListener('click', startTour);
         console.log('Tour button listener attached');
-    } else {
-        console.error('Tour button not found');
     }
 
     // Dashboard chart filter buttons
@@ -2023,20 +2133,19 @@ async function init() {
     const defaultMonth = document.querySelector('.analytics-filter-btn[data-filter="month"]');
     if (defaultMonth) defaultMonth.classList.add('active');
 
-    // Column visibility toggles
-    document.querySelectorAll('.col-toggle').forEach(cb => {
-        cb.addEventListener('change', applyColumnVisibility);
-    });
-    loadColumnPreferences();
-
-    // Close dropdown when clicking outside
+    // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         const selector = document.getElementById('column-selector');
-        const btn = e.target.closest('.btn'); // assuming the Columns button has class 'btn'
-        if (!btn || !btn.textContent.includes('Columns')) {
-            if (selector && !selector.contains(e.target)) {
-                selector.style.display = 'none';
-            }
+        const triggerBtns = e.target.closest('.btn[onclick*="toggleColumnSelector"]');
+        
+        // Hide global search dropdown and notification dropdown if clicked outside
+        if (!e.target.closest('.header-right') && !e.target.closest('.header-search')) {
+            document.querySelectorAll('.dropdown-menu, .search-dropdown').forEach(el => el.classList.remove('active'));
+        }
+        
+        // Custom check for the column selector dropdown
+        if (selector && !selector.contains(e.target) && !triggerBtns) {
+            selector.style.display = 'none';
         }
     });
 
@@ -2067,9 +2176,7 @@ window.updateReassign = updateReassign;
 window.completeTask = completeTask;
 window.deleteTask = deleteTask;
 window.toggleDropdown = toggleDropdown;
-window.filterEmployees = filterEmployees;
 window.filterCases = filterCases;
-window.toggleColumnSelector = toggleColumnSelector;
 window.sortTable = sortTable;
 window.closeModal = closeModal;
 window.signOut = signOut;
@@ -2082,5 +2189,14 @@ window.uploadDocument = uploadDocument;
 window.addEmployee = addEmployee;
 window.openReportScheduler = openReportScheduler;
 window.scheduleReport = scheduleReport;
+
+// Newly exposed properties for Table functionalities
+window.applyFilters = applyFilters;
+window.loadEmployeeDirectoryWithFilters = loadEmployeeDirectoryWithFilters;
+window.buildColumnCheckboxes = buildColumnCheckboxes;
+window.applyColumnVisibility = applyColumnVisibility;
+window.cancelColumnSelector = cancelColumnSelector;
+window.toggleColumnSelector = toggleColumnSelector;
+window.renderFilterRow = renderFilterRow;
 
 init();
