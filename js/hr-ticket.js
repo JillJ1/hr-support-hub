@@ -1,4 +1,4 @@
-// hr-ticket.js – upgraded with task assignment fix, email debugging, and unified email sending
+// hr-ticket.js – fully upgraded with scroll fix, auto‑message, notes improvements, task duplication fix, email, etc.
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -29,9 +29,28 @@ function getInitials(name) {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
 }
 
+// ✅ Helper to scroll chat to bottom
+function scrollToBottom() {
+    const chatDiv = document.getElementById('chat-history');
+    if (chatDiv) {
+        chatDiv.scrollTop = chatDiv.scrollHeight;
+    }
+}
+
+// ✅ Helper to insert a system (bot) message
+async function insertSystemMessage(content) {
+    await supabaseClient
+        .from('messages')
+        .insert({
+            ticket_id: currentTicketId,
+            sender_type: 'bot',
+            content: content
+        });
+}
+
 // ✅ Prevent duplicate tasks and assign to the correct HR user
 async function createAssignmentTask(ticket, assigneeId = null) {
-    const targetHrId = assigneeId || currentHrId; // Use provided assignee, else current user
+    const targetHrId = assigneeId || currentHrId;
     if (!targetHrId) return;
 
     // Check for existing pending task for this ticket (using ticket ID in title)
@@ -78,7 +97,7 @@ function displayMessage(msg) {
     bubble.textContent = msg.content;
     msgDiv.appendChild(bubble);
     chatDiv.appendChild(msgDiv);
-    chatDiv.scrollTop = chatDiv.scrollHeight;
+    scrollToBottom(); // ✅ scroll after each message
 }
 
 async function loadTicket() {
@@ -121,6 +140,7 @@ async function loadTicket() {
 
         document.getElementById('chat-history').innerHTML = '';
         messages.forEach(displayMessage);
+        scrollToBottom(); // ✅ scroll after initial load
 
         loadNotes();
 
@@ -178,6 +198,14 @@ async function loadNotes() {
         `;
         notesDiv.appendChild(noteDiv);
     });
+
+    // After loading, adjust collapsible height if open
+    const content = document.getElementById('notes-content');
+    if (!notesOpen) {
+        content.style.maxHeight = '0px';
+    } else {
+        content.style.maxHeight = content.scrollHeight + 'px';
+    }
 }
 
 async function sendReply() {
@@ -234,14 +262,15 @@ async function addNote() {
         showToast('Error adding note: ' + error.message, 'error');
     } else {
         await loadNotes();
-        // After loading, adjust collapsible content height
+        // After loading, ensure collapsible height is updated
         const content = document.getElementById('notes-content');
         if (!notesOpen) {
-            // If collapsed, temporarily expand to get scrollHeight, then collapse back
-            content.style.maxHeight = content.scrollHeight + 'px';
-            setTimeout(() => {
-                if (!notesOpen) content.style.maxHeight = '0px';
-            }, 10);
+            content.style.maxHeight = '0px';
+        } else {
+            // Temporarily set to auto to get new scrollHeight, then set to that value
+            content.style.maxHeight = 'none';
+            const newHeight = content.scrollHeight;
+            content.style.maxHeight = newHeight + 'px';
         }
         showToast('Note added', 'success');
     }
@@ -252,7 +281,7 @@ async function assignToMe() {
     try {
         const { error } = await supabaseClient
             .from('tickets')
-            .update({ assigned_to: currentHrId, status: 'inprogress' })
+            .update({ assigned_to: currentHrId, status: 'inprogress', visible_to_hr: true })
             .eq('id', currentTicketId);
 
         if (error) {
@@ -261,7 +290,7 @@ async function assignToMe() {
         } else {
             console.log('Assign successful');
             showToast('Ticket assigned to you', 'success');
-            await createAssignmentTask(currentTicket, currentHrId); // assign to self
+            await createAssignmentTask(currentTicket, currentHrId);
             updateStatusPill('inprogress');
         }
     } catch (err) {
@@ -275,7 +304,7 @@ async function takeOver() {
     try {
         const { error } = await supabaseClient
             .from('tickets')
-            .update({ assigned_to: currentHrId, status: 'inprogress', bot_active: false })
+            .update({ assigned_to: currentHrId, status: 'inprogress', bot_active: false, visible_to_hr: true })
             .eq('id', currentTicketId);
 
         if (error) {
@@ -284,7 +313,7 @@ async function takeOver() {
         } else {
             console.log('Take over successful');
             showToast('You have taken over this conversation', 'success');
-            await createAssignmentTask(currentTicket, currentHrId); // assign to self
+            await createAssignmentTask(currentTicket, currentHrId);
             // Insert system message – display handled by subscription
             await supabaseClient
                 .from('messages')
@@ -301,12 +330,11 @@ async function takeOver() {
     }
 }
 
-// ✅ FIX: Set resolved_at when closing via dropdown and send email
+// ✅ Set resolved_at when closing via dropdown and send auto‑message + email
 async function changeStatus() {
     const newStatus = document.getElementById('status-dropdown').value;
     const updateData = { status: newStatus };
 
-    // If the new status is 'closed', also set resolved_at
     if (newStatus === 'closed') {
         updateData.resolved_at = new Date().toISOString();
     }
@@ -322,8 +350,9 @@ async function changeStatus() {
         showToast(`Status changed to ${newStatus}`, 'success');
         updateStatusPill(newStatus);
 
-        // ✅ If closed, send email notification
+        // ✅ If closed, send auto‑message and email
         if (newStatus === 'closed') {
+            await insertSystemMessage('This ticket has been resolved. Thank you. If you have more questions, please start a new chat or email us.');
             await sendResolutionEmail();
         }
     }
@@ -396,7 +425,7 @@ async function sendResolutionEmail() {
     }
 }
 
-// ✅ Updated resolve to use sendResolutionEmail
+// ✅ Updated resolve to use sendResolutionEmail and auto‑message
 async function resolve() {
     try {
         const { error } = await supabaseClient
@@ -410,6 +439,7 @@ async function resolve() {
         } else {
             showToast('Ticket resolved', 'success');
             updateStatusPill('closed');
+            await insertSystemMessage('This ticket has been resolved. Thank you. If you have more questions, please start a new chat or email us.');
             await sendResolutionEmail();
         }
     } catch (err) {
