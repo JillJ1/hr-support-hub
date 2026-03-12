@@ -262,3 +262,52 @@ body {
 .badge.inprogress { background: #e0f2fe; color: #0f5b8c; }
 .badge.closed { background: #d1fae5; color: #047857; }
 .badge.escalated { background: #fee2e2; color: #b91c1c; }
+
+/* ==================== MESSAGE ALIGNMENT (view‑based) ==================== */
+.employee-view .message.employee {
+    align-self: flex-end;
+    background: #0f5b8c;
+    color: white;
+}
+.employee-view .message.bot,
+.employee-view .message.hr {
+    align-self: flex-start;
+    background: #f1f5f9;
+    color: #1e2f3e;
+}
+
+.hr-view .message.hr {
+    align-self: flex-end;
+    background: #0f5b8c;
+    color: white;
+}
+.hr-view .message.employee,
+.hr-view .message.bot {
+    align-self: flex-start;
+    background: #f1f5f9;
+    color: #1e2f3e;
+}
+
+/* ==================== INTERNAL NOTES ==================== */
+.notes-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+.note {
+    background: #f8f8fa;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    word-wrap: break-word;
+}
+.note small {
+    color: #8e8e93;
+}
+
+/* Collapsible notes content */
+#notes-content {
+    transition: max-height 0.3s ease;
+    overflow: hidden;
+}
