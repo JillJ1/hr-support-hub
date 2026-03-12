@@ -315,3 +315,25 @@ body {
     transition: max-height 0.3s ease;
     overflow: hidden;
 }
+
+/* ==================== COLUMN SELECTOR DROPDOWN ==================== */
+.column-selector-dropdown {
+    position: absolute;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    padding: 10px 15px;
+    z-index: 100;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.column-selector-dropdown label {
+    display: block;
+    padding: 4px 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.column-selector-dropdown label:hover {
+    background-color: #f1f5f9;
+}
