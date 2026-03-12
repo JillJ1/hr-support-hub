@@ -47,7 +47,8 @@ async function updateNotificationCount() {
         const { count: taskCount, error: taskError } = await supabaseClient
             .from('tasks')
             .select('*', { count: 'exact', head: true })
-            .eq('status', 'pending');
+            .eq('status', 'pending')
+            .eq('assigned_to', currentHrId);   // 👈 filter by current user
 
         if (ticketError || taskError) throw new Error('Count error');
 
@@ -259,7 +260,7 @@ async function loadEmployeeDirectory(page = 1, pageSize = 50) {
         tr.setAttribute('data-emp-name', emp.full_name);
         tr.setAttribute('data-emp-email', emp.email);
         tr.setAttribute('data-emp-position', emp.position || '');
-        tr.onclick = () => viewEmployeeProfile(emp.id, emp.full_name, emp.email, emp.position);
+        tr.onclick = () => viewEmployeeProfile(emp.id, emp.full_name, emp.email, emp.position, emp.auth_id);
         tr.innerHTML = `
             <td>${emp.id.substr(0,8)}</td>
             <td>${escapeHTML(emp.full_name)}</td>
@@ -527,7 +528,7 @@ async function createAssignmentTask(ticketId, assigneeId = null) {
     }
 }
 
-function viewEmployeeProfile(id, name, email, position) {
+function viewEmployeeProfile(id, name, email, position, auth_id) {
     document.getElementById('modal-emp-name').textContent = name;
     document.getElementById('modal-emp-id').textContent = id;
 
@@ -561,7 +562,6 @@ function viewEmployeeProfile(id, name, email, position) {
                     <td>${escapeHTML(t.issue_summary || '')}</td>
                     <td>${formatDate(t.created_at)}</td>
                 `;
-                // 🔗 Navigate with ticket ID in URL
                 tr.onclick = () => {
                     closeModal('emp-profile-modal');
                     window.location.href = `/hr/ticket.html?id=${t.id}`;
@@ -569,6 +569,46 @@ function viewEmployeeProfile(id, name, email, position) {
                 tbody.appendChild(tr);
             });
         });
+
+    // 👇 Add "Add as HR" button
+    const modalInfo = document.querySelector('.modal-info');
+    if (modalInfo) {
+        // Remove any existing button to avoid duplicates
+        const existingBtn = document.getElementById('add-hr-btn');
+        if (existingBtn) existingBtn.remove();
+
+        const hrButton = document.createElement('button');
+        hrButton.id = 'add-hr-btn';
+        hrButton.className = 'btn btn-primary';
+        hrButton.style.marginTop = '10px';
+        hrButton.textContent = 'Add as HR';
+        hrButton.onclick = async () => {
+            if (!auth_id) {
+                showToast('No auth_id for this employee', 'error');
+                return;
+            }
+            const { error } = await supabaseClient
+                .from('hr_staff')
+                .insert({
+                    auth_id: auth_id,
+                    display_name: name
+                });
+
+            if (error) {
+                console.error('Error adding HR:', error);
+                if (error.code === '23505') { // unique violation
+                    showToast('This employee is already in HR staff', 'warning');
+                } else {
+                    showToast('Error: ' + error.message, 'error');
+                }
+            } else {
+                showToast('HR added successfully', 'success');
+                hrButton.disabled = true;
+                hrButton.textContent = 'Already HR';
+            }
+        };
+        modalInfo.appendChild(hrButton);
+    }
 
     document.getElementById('emp-profile-modal').classList.add('active');
 }
@@ -1240,6 +1280,7 @@ const avgResolution = resolutionCount ? (totalResolutionHours / resolutionCount)
                     <td><span class="status-badge status-${t.status}">${t.status}</span></td>
                     <td>${new Date(t.created_at).toLocaleDateString()}</td>
                     <td>${t.rating || '-'}</td>
+                    <td>${escapeHTML(t.feedback_comment || '')}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -1593,6 +1634,7 @@ async function loadNotificationItems() {
             .from('tasks')
             .select('id, title')
             .eq('status', 'pending')
+            .eq('assigned_to', currentHrId)   // 👈 filter by current user
             .order('created_at', { ascending: false })
             .limit(5);
 
