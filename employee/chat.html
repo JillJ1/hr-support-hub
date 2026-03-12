@@ -284,19 +284,21 @@
             cursor: not-allowed;
         }
     </style>
-    <!-- Early authentication check -->
+    <!-- Early authentication check with redirect -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script>
         (async () => {
             const { data: { user } } = await supabaseClient.auth.getUser();
             if (!user) {
-                window.location.href = '/';
+                // Save the current URL to redirect back after login
+                const returnTo = encodeURIComponent(window.location.href);
+                window.location.href = `/?redirect=${returnTo}`;
             }
         })();
     </script>
 </head>
-<body class="employee-view"> <!-- 👈 Added class for correct message alignment -->
+<body class="employee-view">
     <header>
         <div class="header-left">
             <button id="back-btn" class="back-btn">←</button>
