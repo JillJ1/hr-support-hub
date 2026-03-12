@@ -1,4 +1,4 @@
-// hr-ticket.js – upgraded with duplicate task prevention and improved email handling
+// hr-ticket.js – upgraded with task assignment fix and email debugging
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -29,16 +29,16 @@ function getInitials(name) {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
 }
 
-// ✅ Prevent duplicate tasks by checking if a pending task already exists for this ticket
+// ✅ Prevent duplicate tasks and assign to the correct HR user
 async function createAssignmentTask(ticket, assigneeId = null) {
-    const hrId = assigneeId || currentHrId;
-    if (!hrId) return;
+    const targetHrId = assigneeId || currentHrId; // Use provided assignee, else current user
+    if (!targetHrId) return;
 
-    // Check for existing pending task for this ticket
+    // Check for existing pending task for this ticket (using ticket ID in title)
     const { data: existing, error: checkError } = await supabaseClient
         .from('tasks')
         .select('id')
-        .eq('assigned_to', hrId)
+        .eq('assigned_to', targetHrId)
         .eq('status', 'pending')
         .ilike('title', `%${ticket.id.substr(0,8)}%`)
         .maybeSingle();
@@ -60,9 +60,10 @@ async function createAssignmentTask(ticket, assigneeId = null) {
                 title: taskTitle,
                 description: `Ticket assigned to you. Employee: ${ticket.employees?.full_name || 'Unknown'}`,
                 status: 'pending',
-                assigned_to: hrId
+                assigned_to: targetHrId
             });
         if (error) console.error('Error creating task:', error);
+        else console.log(`Task created for HR user ${targetHrId}`);
     } catch (err) {
         console.error('Task creation failed:', err);
     }
@@ -260,7 +261,7 @@ async function assignToMe() {
         } else {
             console.log('Assign successful');
             showToast('Ticket assigned to you', 'success');
-            await createAssignmentTask(currentTicket);
+            await createAssignmentTask(currentTicket, currentHrId); // assign to self
             updateStatusPill('inprogress');
         }
     } catch (err) {
@@ -283,7 +284,7 @@ async function takeOver() {
         } else {
             console.log('Take over successful');
             showToast('You have taken over this conversation', 'success');
-            await createAssignmentTask(currentTicket);
+            await createAssignmentTask(currentTicket, currentHrId); // assign to self
             // Insert system message – display handled by subscription
             await supabaseClient
                 .from('messages')
@@ -323,7 +324,7 @@ async function changeStatus() {
     }
 }
 
-// ✅ Secure email notification – no chat logs, just a link, with better error handling
+// ✅ Secure email notification – no chat logs, just a link, with detailed logging
 async function resolve() {
     try {
         const { error } = await supabaseClient
@@ -373,6 +374,7 @@ async function resolve() {
                 };
 
                 try {
+                    console.log('Sending email with payload:', emailPayload);
                     const response = await fetch(
                         `${supabaseUrl}/functions/v1/send-email`,
                         {
@@ -382,11 +384,14 @@ async function resolve() {
                         }
                     );
                     const responseText = await response.text();
+                    console.log('Email response status:', response.status);
+                    console.log('Email response text:', responseText);
                     if (!response.ok) {
                         console.error('Email send failed:', response.status, responseText);
                         showToast('Email notification failed', 'error');
                     } else {
                         console.log('Email sent successfully:', responseText);
+                        showToast('Resolution email sent', 'success');
                     }
                 } catch (err) {
                     console.error('Error sending email:', err);
