@@ -302,29 +302,25 @@ function renderFilterRow() {
     const thead = document.querySelector('#emp-table thead');
     if (!thead) return;
 
-    let filterRow = document.getElementById('emp-filter-row');
-    if (!filterRow) {
-        filterRow = document.createElement('tr');
-        filterRow.id = 'emp-filter-row';
-        thead.appendChild(filterRow);
-    }
-    filterRow.innerHTML = '';
+    // Remove existing filter row if any
+    const existingRow = document.getElementById('emp-filter-row');
+    if (existingRow) existingRow.remove();
+
+    const filterRow = document.createElement('tr');
+    filterRow.id = 'emp-filter-row';
 
     const headers = thead.querySelectorAll('tr:first-child th');
     headers.forEach((th, index) => {
         const td = document.createElement('th');
-        td.style.display = th.style.display; 
+        td.style.display = th.style.display; // inherit column visibility
         if (empColumns[index]) {
-            td.innerHTML = `<input type="text" class="emp-filter-input" data-dbcol="${empColumns[index]}" placeholder="Filter..." style="width: 100%; box-sizing: border-box; padding: 4px; font-weight: normal;">`;
-            
-            // Allow Enter key to quickly trigger applyFilters
-            const input = td.querySelector('input');
-            input.addEventListener('keypress', (e) => {
-                if(e.key === 'Enter') applyFilters();
-            });
+            td.innerHTML = `<input type="text" class="emp-filter-input" data-dbcol="${empColumns[index]}" placeholder="Filter..." style="width:100%; padding:4px; font-weight:normal;">`;
+        } else {
+            td.innerHTML = ''; // empty for columns like photo
         }
         filterRow.appendChild(td);
     });
+    thead.appendChild(filterRow);
 }
 
 function applyFilters() {
@@ -359,14 +355,9 @@ function toggleColumnSelector(e) {
 }
 
 function buildColumnCheckboxes() {
-    // Assuming you have an inner container #column-selector-options inside #column-selector in HTML
-    let selectorDiv = document.getElementById('column-selector-options');
-    if (!selectorDiv) {
-        // Fallback if not structurally present, use the container itself
-        selectorDiv = document.getElementById('column-selector');
-        // Clear anything except action buttons if needed, but best if HTML provides a dedicated div
-    }
-    selectorDiv.innerHTML = '';
+    const container = document.getElementById('column-selector-options');
+    if (!container) return;
+    container.innerHTML = '';
 
     const headers = document.querySelectorAll('#emp-table thead tr:first-child th');
     const saved = localStorage.getItem('employeeColPrefs');
@@ -374,7 +365,7 @@ function buildColumnCheckboxes() {
 
     headers.forEach((th, index) => {
         const text = th.textContent.trim();
-        if (!text) return; // skip empty headers
+        if (!text) return;
 
         const isChecked = prefs[index] !== undefined ? prefs[index] : true;
         const label = document.createElement('label');
@@ -382,7 +373,7 @@ function buildColumnCheckboxes() {
         label.style.padding = '4px 8px';
         label.style.cursor = 'pointer';
         label.innerHTML = `<input type="checkbox" class="col-toggle-temp" data-col="${index}" ${isChecked ? 'checked' : ''}> ${escapeHTML(text)}`;
-        selectorDiv.appendChild(label);
+        container.appendChild(label);
     });
 }
 
@@ -410,7 +401,7 @@ function loadColumnPreferences() {
     const saved = localStorage.getItem('employeeColPrefs');
     const prefs = saved ? JSON.parse(saved) : {};
 
-    // Reset visibility to base
+    // Reset visibility
     document.querySelectorAll('#emp-table th, #emp-table td').forEach(cell => {
         cell.style.display = '';
     });
@@ -424,7 +415,7 @@ function loadColumnPreferences() {
         }
     });
 
-    renderFilterRow();
+    renderFilterRow(); // re-render filter row to match visibility
 }
 
 // ==================== FULL CASES TABLE (with N+1 fix) ====================
@@ -2033,16 +2024,6 @@ async function init() {
             document.getElementById('search-results').classList.add('active');
         }
     });
-
-    // Event Listeners for new Features
-    const applyFiltersBtn = document.getElementById('apply-filters-btn');
-    if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', applyFilters);
-
-    const applyColsBtn = document.getElementById('apply-cols-btn');
-    if (applyColsBtn) applyColsBtn.addEventListener('click', applyColumnVisibility);
-
-    const cancelColsBtn = document.getElementById('cancel-cols-btn');
-    if (cancelColsBtn) cancelColsBtn.addEventListener('click', cancelColumnSelector);
 
     // Realtime subscriptions
     supabaseClient
