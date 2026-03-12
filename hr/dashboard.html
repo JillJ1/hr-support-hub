@@ -443,32 +443,14 @@
             <div class="page-header">
                 <h2>Employee Directory</h2>
                 <div>
-                    <button class="btn btn-secondary" onclick="toggleColumnSelector()">Columns</button>
+                    <button class="btn btn-secondary" onclick="openColumnSelectorModal()">Columns</button>
                     <button class="btn btn-secondary" onclick="exportEmployeesCSV()">Export CSV</button>
                     <button class="btn btn-primary" onclick="openImportCSVModal()">Import CSV</button>
                     <button class="btn bg-yellow" onclick="addEmployee()">Add Employee</button>
-                    <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
-                </div>
-            </div>
-            
-            <div id="column-selector" class="column-selector-dropdown" style="display: none;">
-                <div class="dropdown-header">
-                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 600;">
-                        <input type="checkbox" id="select-all-columns" checked> Select All
-                    </label>
-                </div>
-                <div class="column-list" id="column-selector-options">
-                    <!-- checkboxes will be populated by JS -->
-                </div>
-                <div class="dropdown-footer" style="padding: 8px 15px; border-top: 1px solid #e5e5ea; display: flex; justify-content: flex-end;">
-                    <button class="btn btn-primary btn-sm" onclick="applyColumnVisibility()">Apply</button>
                 </div>
             </div>
 
             <div class="widget-card">
-                <div class="table-controls">
-                    <input type="text" id="emp-search" class="filter-input" placeholder="Filter by name or ID..." style="width: 250px;" onkeyup="filterEmployees()">
-                </div>
                 <div class="table-responsive">
                     <table class="data-table" id="emp-table">
                         <thead>
@@ -760,6 +742,30 @@
             <div class="modal-footer">
                 <button class="btn btn-outline" onclick="closeModal('import-csv-modal')">Cancel</button>
                 <button class="btn btn-primary" onclick="processCSVUpload()">Upload & Update</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Column Selector Modal -->
+    <div id="column-selector-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Choose Columns</h3>
+                <button class="modal-close" onclick="closeModal('column-selector-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="select-all-columns" checked> Select All
+                    </label>
+                </div>
+                <div id="column-list" style="max-height: 300px; overflow-y: auto; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                    <!-- Checkboxes will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeModal('column-selector-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="applyColumnSelection()">Apply</button>
             </div>
         </div>
     </div>
