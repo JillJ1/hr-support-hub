@@ -447,6 +447,7 @@
                     <button class="btn btn-secondary" onclick="exportEmployeesCSV()">Export CSV</button>
                     <button class="btn btn-primary" onclick="openImportCSVModal()">Import CSV</button>
                     <button class="btn bg-yellow" onclick="addEmployee()">Add Employee</button>
+                    <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
                 </div>
             </div>
             
@@ -456,7 +457,7 @@
                         <input type="checkbox" id="select-all-columns" checked> Select All
                     </label>
                 </div>
-                <div class="column-list">
+                <div class="column-list" id="column-selector-options">
                     <!-- checkboxes will be populated by JS -->
                 </div>
                 <div class="dropdown-footer" style="padding: 8px 15px; border-top: 1px solid #e5e5ea; display: flex; justify-content: flex-end;">
@@ -471,11 +472,23 @@
                 <div class="table-responsive">
                     <table class="data-table" id="emp-table">
                         <thead>
-                            <tr><th class="sortable" onclick="sortTable('emp-table', 0)">ID</th><th class="sortable" onclick="sortTable('emp-table', 1)">Full Name</th><th>Contact</th><th class="sortable" onclick="sortTable('emp-table', 3)">Position</th><th class="sortable" onclick="sortTable('emp-table', 4)">Manager</th><th class="sortable" onclick="sortTable('emp-table', 5, true)">Tenure (Yrs)</th></tr>
+                            <tr>
+                                <th class="sortable" onclick="sortTable('emp-table', 0)">ID</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 1)">Auth ID</th>
+                                <th>Photo</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 3)">Full Name</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 4)">Email</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 5)">Phone</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 6)">Home Phone</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 7)">Marital Status</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 8)">Position</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 9)">Work Location</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 10)">Department</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 11, true)">Start Date</th>
+                                <th class="sortable" onclick="sortTable('emp-table', 12)">Emergency Contact</th>
+                            </tr>
+                            <!-- Filter row will be injected here by JavaScript -->
                         </thead>
-                        <tbody id="filter-row" style="background: #f8fafc;">
-                            <!-- Filter inputs will be inserted here by JavaScript -->
-                        </tbody>
                         <tbody id="emp-table-body"></tbody>
                     </table>
                 </div>
