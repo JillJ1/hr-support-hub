@@ -1,5 +1,4 @@
-// hr-ticket.js – upgraded with internal notes height fix, task creation on reassign,
-// duplicate message fix, resolved_at on dropdown close, and secure email notification
+// hr-ticket.js – upgraded with duplicate task prevention and improved email handling
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 let currentTicketId = null;
@@ -30,7 +29,29 @@ function getInitials(name) {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
 }
 
-async function createAssignmentTask(ticket) {
+// ✅ Prevent duplicate tasks by checking if a pending task already exists for this ticket
+async function createAssignmentTask(ticket, assigneeId = null) {
+    const hrId = assigneeId || currentHrId;
+    if (!hrId) return;
+
+    // Check for existing pending task for this ticket
+    const { data: existing, error: checkError } = await supabaseClient
+        .from('tasks')
+        .select('id')
+        .eq('assigned_to', hrId)
+        .eq('status', 'pending')
+        .ilike('title', `%${ticket.id.substr(0,8)}%`)
+        .maybeSingle();
+
+    if (checkError) {
+        console.error('Error checking existing task:', checkError);
+        return;
+    }
+    if (existing) {
+        console.log('Task already exists for this ticket, skipping creation.');
+        return;
+    }
+
     try {
         const taskTitle = `Handle ticket #${ticket.id.substr(0,8)} - ${ticket.issue_summary || 'No summary'}`;
         const { error } = await supabaseClient
@@ -39,7 +60,7 @@ async function createAssignmentTask(ticket) {
                 title: taskTitle,
                 description: `Ticket assigned to you. Employee: ${ticket.employees?.full_name || 'Unknown'}`,
                 status: 'pending',
-                assigned_to: currentHrId
+                assigned_to: hrId
             });
         if (error) console.error('Error creating task:', error);
     } catch (err) {
@@ -302,7 +323,7 @@ async function changeStatus() {
     }
 }
 
-// ✅ NEW: Secure email notification – no chat logs, just a link
+// ✅ Secure email notification – no chat logs, just a link, with better error handling
 async function resolve() {
     try {
         const { error } = await supabaseClient
@@ -317,8 +338,21 @@ async function resolve() {
             showToast('Ticket resolved', 'success');
             updateStatusPill('closed');
 
-            const employeeEmail = currentTicket.employees?.email;
-            const employeeName = currentTicket.employees?.full_name || 'Employee';
+            // Fetch employee email directly to ensure it's fresh
+            const { data: emp, error: empError } = await supabaseClient
+                .from('employees')
+                .select('email, full_name')
+                .eq('id', currentTicket.employee_id)
+                .single();
+
+            if (empError) {
+                console.error('Error fetching employee:', empError);
+                showToast('Could not fetch employee email', 'error');
+                return;
+            }
+
+            const employeeEmail = emp?.email;
+            const employeeName = emp?.full_name || 'Employee';
             const issueSummary = currentTicket.issue_summary || 'your request';
             console.log('Employee email:', employeeEmail);
 
@@ -360,6 +394,7 @@ async function resolve() {
                 }
             } else {
                 console.log('No employee email found');
+                showToast('Employee has no email address', 'error');
             }
         }
     } catch (err) {
