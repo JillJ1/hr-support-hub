@@ -60,7 +60,7 @@ async function loadKPIs() {
             .from('tickets')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'open')
-            .eq('visible_to_hr', true);
+            .eq('visible_to_hr', true);       // 👈 only visible open tickets
         document.getElementById('kpi-open-cases').textContent = openCases || '0';
 
         const { count: pendingTasks } = await supabaseClient
@@ -91,7 +91,7 @@ async function loadRecentCases() {
             *,
             employees (full_name)
         `)
-        .eq('visible_to_hr', true)
+        .eq('visible_to_hr', true)           // 👈 only show visible tickets
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -186,6 +186,35 @@ async function loadTasks() {
     });
 }
 
+// ==================== LOAD DEPARTMENTS ====================
+async function loadDepartments() {
+    const { data: departments, error } = await supabaseClient
+        .from('employees')
+        .select('department')
+        .not('department', 'is', null)
+        .order('department');
+
+    if (error) {
+        console.error('Error loading departments:', error);
+        return;
+    }
+
+    // Get unique departments
+    const uniqueDepts = [...new Set(departments.map(d => d.department))];
+    const deptSelect = document.getElementById('emp-dept');
+    if (!deptSelect) return;
+
+    // Keep the "All Departments" option
+    deptSelect.innerHTML = '<option value="All Departments">All Departments</option>';
+    
+    uniqueDepts.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept;
+        option.textContent = dept;
+        deptSelect.appendChild(option);
+    });
+}
+
 // ==================== EMPLOYEE DIRECTORY ====================
 async function loadEmployeeDirectory(page = 1, pageSize = 50) {
     const tbody = document.querySelector('#emp-table tbody');
@@ -248,7 +277,7 @@ async function loadCasesTable(page = 1, pageSize = 50) {
             *,
             employees (full_name)
         `, { count: 'exact' })
-        .eq('visible_to_hr', true)
+        .eq('visible_to_hr', true)           // 👈 only show visible tickets
         .order('created_at', { ascending: false })
         .range(from, to);
 
@@ -351,7 +380,7 @@ async function assignTicket(button) {
 
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ assigned_to: currentHrId, status: 'inprogress', visible_to_hr: true })
+        .update({ assigned_to: currentHrId, status: 'inprogress', visible_to_hr: true }) // 👈 ensure visible
         .eq('id', ticketId);
 
     if (error) {
@@ -390,7 +419,7 @@ async function updateReassign(select) {
     const hrId = select.value || null;
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ assigned_to: hrId, visible_to_hr: true })
+        .update({ assigned_to: hrId, visible_to_hr: true }) // 👈 ensure visible
         .eq('id', ticketId);
     if (error) {
         showToast('Error reassigning: ' + error.message, 'error');
@@ -539,6 +568,7 @@ function navigate(viewId) {
         updateNotificationCount();
     } else if (viewId === 'view-employees') {
         loadEmployeeDirectory();
+        loadDepartments();          // 👈 add this line
         updateNotificationCount();
     } else if (viewId === 'view-cases') {
         loadCasesTable();
@@ -598,7 +628,7 @@ async function submitNewTicket(e) {
             category: category,
             status: ticketStatus,
             assigned_to: assignedTo,
-            visible_to_hr: true
+            visible_to_hr: true                // 👈 HR-created tickets are visible
         })
         .select()
         .single();
@@ -677,10 +707,12 @@ async function performSearch(query) {
     const resultsDiv = document.getElementById('search-results');
     resultsDiv.innerHTML = '<div class="dropdown-header">Quick Results</div>';
 
-    const [employees, ticketsBySummary, ticketsById] = await Promise.all([
+    const [employees, ticketsBySummary, ticketsById, employeesById] = await Promise.all([
         supabaseClient.from('employees').select('id, full_name').ilike('full_name', `%${query}%`).limit(5),
         supabaseClient.from('tickets').select('id, issue_summary').ilike('issue_summary', `%${query}%`).limit(5),
-        supabaseClient.from('tickets').select('id, issue_summary').ilike('id', `%${query}%`).limit(5)
+        supabaseClient.from('tickets').select('id, issue_summary').ilike('id', `%${query}%`).limit(5),
+        // If query looks like a UUID (optional), do exact match on employees.id
+        supabaseClient.from('employees').select('id, full_name').eq('id', query).limit(5)
     ]);
 
     if (employees.data?.length) {
@@ -718,7 +750,21 @@ async function performSearch(query) {
             resultsDiv.appendChild(div);
         });
     }
-    if (!employees.data?.length && !ticketsBySummary.data?.length && !ticketsById.data?.length) {
+    if (employeesById.data?.length) {
+        employeesById.data.forEach(emp => {
+            const div = document.createElement('div');
+            div.className = 'search-item';
+            div.textContent = `🆔 ${emp.full_name} (ID match)`;
+            div.onclick = () => {
+                document.getElementById('global-search').value = emp.full_name;
+                resultsDiv.classList.remove('active');
+                viewEmployeeProfile(emp.id, emp.full_name);
+            };
+            resultsDiv.appendChild(div);
+        });
+    }
+    
+    if (!employees.data?.length && !ticketsBySummary.data?.length && !ticketsById.data?.length && !employeesById.data?.length) {
         resultsDiv.innerHTML += '<div class="search-item">No results found</div>';
     }
     resultsDiv.classList.add('active');
@@ -1797,6 +1843,7 @@ async function init() {
     supabaseClient
         .channel('tickets-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+            console.log('🔄 Ticket change detected at', new Date().toLocaleTimeString());
             if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
                 loadRecentCases();
                 loadKPIs();
