@@ -1,10 +1,8 @@
-// employee-chat.js – upgraded with env variable for bot API, typing indicator fix,
-// duplicate message fix, and persistent ticket ID in URL
+// employee-chat.js – updated with escalation visibility and scroll fix
 
 const supabaseUrl = 'https://sbaslcgmbwfnqbwtzsil.supabase.co';
 const vercelUrl = 'https://hr-support-hub.vercel.app';
 
-// Bot API URL from environment (injected via script tag or global)
 const botApiUrl = window.BOT_API_URL || 'https://hr-chatbot-production.up.railway.app/chat';
 
 let currentTicketId = null;
@@ -12,6 +10,16 @@ let employeeId = null;
 let employeeName = '';
 let botActive = true;
 let loadingTimeout = null;
+let ticketStatus = null;
+let ticketRating = null;
+
+// Helper to scroll chat to bottom
+function scrollToBottom() {
+    const messagesDiv = document.getElementById('messages');
+    if (messagesDiv) {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+}
 
 function escapeHTML(str) {
     return str.replace(/[&<>"]/g, function(m) {
@@ -62,7 +70,7 @@ function displayMessage(msg) {
     }
     msgDiv.appendChild(bubble);
     messagesDiv.appendChild(msgDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottom(); // scroll after each new message
 }
 
 async function loadMessages() {
@@ -77,6 +85,7 @@ async function loadMessages() {
         return;
     }
     messages.forEach(displayMessage);
+    scrollToBottom(); // scroll after loading all messages
 }
 
 function showTyping(message = 'Thinking') {
@@ -87,7 +96,7 @@ function showTyping(message = 'Thinking') {
     typingDiv.id = 'typing-indicator';
     typingDiv.innerHTML = '<span></span><span></span><span></span>';
     messagesDiv.appendChild(typingDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottom();
 
     loadingTimeout = setTimeout(() => {
         removeTyping();
@@ -117,7 +126,6 @@ async function sendMessage() {
 
     showTyping();
 
-    // Insert employee message – display handled by subscription
     const { error: msgError } = await supabaseClient
         .from('messages')
         .insert({
@@ -159,7 +167,6 @@ async function sendMessage() {
             const data = await response.json();
             removeTyping();
 
-            // Insert bot message – display handled by subscription
             const { error: botError } = await supabaseClient
                 .from('messages')
                 .insert({
@@ -193,9 +200,10 @@ async function sendMessage() {
 }
 
 async function escalateToHR() {
+    // ✅ Make ticket visible to HR
     const { error } = await supabaseClient
         .from('tickets')
-        .update({ priority: 'high' })
+        .update({ priority: 'high', visible_to_hr: true })
         .eq('id', currentTicketId);
 
     if (error) {
@@ -244,22 +252,16 @@ async function init() {
         return;
     }
 
-    // 🔗 Get ticket ID from URL query parameter first
     const urlParams = new URLSearchParams(window.location.search);
     let ticketId = urlParams.get('id');
-
-    // Fallback to sessionStorage for old links
     if (!ticketId) {
         ticketId = sessionStorage.getItem('currentTicketId');
     }
-
     if (!ticketId) {
         alert('No ticket selected. Redirecting to tickets list.');
         window.location.href = '/employee/tickets.html';
         return;
     }
-
-    // Clear from sessionStorage if it was there
     sessionStorage.removeItem('currentTicketId');
     currentTicketId = ticketId;
 
@@ -280,7 +282,7 @@ async function init() {
 
     const { data: ticketData, error: ticketError } = await supabaseClient
         .from('tickets')
-        .select('bot_active')
+        .select('bot_active, status, rating')
         .eq('id', currentTicketId)
         .single();
 
@@ -292,8 +294,14 @@ async function init() {
     }
 
     botActive = ticketData?.bot_active ?? true;
+    ticketStatus = ticketData?.status;
+    ticketRating = ticketData?.rating;
 
     await loadMessages();
+
+    if (ticketStatus === 'closed' && !ticketRating) {
+        showRatingPrompt();
+    }
 
     supabaseClient
         .channel(`ticket-${currentTicketId}`)
@@ -316,6 +324,9 @@ async function init() {
             filter: `id=eq.${currentTicketId}`
         }, (payload) => {
             const newBotActive = payload.new.bot_active;
+            const newStatus = payload.new.status;
+            const newRating = payload.new.rating;
+
             if (botActive && !newBotActive) {
                 displayMessage({
                     sender_type: 'bot',
@@ -323,6 +334,11 @@ async function init() {
                 });
             }
             botActive = newBotActive;
+
+            if (newStatus === 'closed' && newStatus !== ticketStatus && !newRating) {
+                showRatingPrompt();
+            }
+            ticketStatus = newStatus;
         })
         .subscribe();
 
@@ -342,5 +358,12 @@ async function init() {
         window.location.href = '/';
     });
 }
+
+function showToast(message, type = 'info') {
+    // Simple toast – you can replace with your preferred implementation
+    alert(message);
+}
+
+// Rating prompt functions (unchanged) ...
 
 init();
