@@ -284,6 +284,17 @@
             cursor: not-allowed;
         }
     </style>
+    <!-- Early authentication check -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script>
+        (async () => {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (!user) {
+                window.location.href = '/';
+            }
+        })();
+    </script>
 </head>
 <body class="employee-view"> <!-- 👈 Added class for correct message alignment -->
     <header>
@@ -314,8 +325,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/js/supabase.js"></script>
     <script src="/js/classify.js"></script>
     <script src="/js/employee-chat.js"></script>
 </body>
