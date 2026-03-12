@@ -218,6 +218,20 @@
             border-bottom-left-radius: 4px;
         }
 
+        /* HR view specific overrides (employee messages left, hr messages right) */
+        .hr-view .message.hr .message-bubble {
+            background: #0a5b8c;
+            color: white;
+            border-bottom-right-radius: 4px;
+            margin-left: auto;
+        }
+        .hr-view .message.employee .message-bubble {
+            background: #e9e9ed;
+            color: #1c1c1e;
+            border-bottom-left-radius: 4px;
+            margin-left: 0;
+        }
+
         /* --- Reply Area (iMessage style) --- */
         .reply-area {
             display: flex;
@@ -257,7 +271,7 @@
             height: 18px;
         }
 
-        /* --- Internal Notes Section --- */
+        /* --- Internal Notes Section (improved) --- */
         .notes-header {
             display: flex;
             justify-content: space-between;
@@ -277,7 +291,10 @@
             transform: rotate(90deg);
         }
         .notes-list {
+            max-height: 300px;
+            overflow-y: auto;
             margin-bottom: 10px;
+            padding-right: 10px;
         }
         .note {
             background: #f8f8fa;
@@ -285,6 +302,7 @@
             border-radius: 8px;
             margin-bottom: 8px;
             font-size: 0.9rem;
+            word-wrap: break-word;
         }
         .note small {
             color: #8e8e93;
@@ -312,6 +330,12 @@
         }
         #add-note-btn:hover {
             background: #e5e5ea;
+        }
+
+        /* Collapsible notes content with smooth transition */
+        #notes-content {
+            transition: max-height 0.3s ease;
+            overflow: hidden;
         }
 
         /* --- Back Button --- */
@@ -405,7 +429,7 @@
         }
     </style>
 </head>
-<body>
+<body class="hr-view"> <!-- 👈 Added class for correct message alignment -->
     <div id="toast"></div>
 
     <!-- Modal for Employee Profile -->
