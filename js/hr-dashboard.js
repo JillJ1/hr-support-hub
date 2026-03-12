@@ -321,8 +321,11 @@ async function loadCasesTable(page = 1, pageSize = 50) {
             statusText = 'Escalated';
         }
 
+        // Find assignee name from cached HR staff
+        const assignedHr = ticket.assigned_to ? allHrStaff.find(h => h.id === ticket.assigned_to) : null;
+        const assigneeName = assignedHr ? assignedHr.display_name : 'Me';
         const assignBtn = ticket.assigned_to
-            ? `<button class="btn btn-unassign" data-ticket-id="${ticket.id}" onclick="unassignTicket(this)">Unassign (${ticket.assigned_to_hr?.display_name || 'Me'})</button>`
+            ? `<button class="btn btn-unassign" data-ticket-id="${ticket.id}" onclick="unassignTicket(this)">Unassign (${escapeHTML(assigneeName)})</button>`
             : `<button class="btn btn-assign" data-ticket-id="${ticket.id}" onclick="assignTicket(this)">Assign to Me</button>`;
 
         // Build reassign dropdown from cached allHrStaff
@@ -597,6 +600,8 @@ function navigate(viewId) {
     } else if (viewId === 'view-analytics') {
         loadEnhancedAnalytics('month');
     }
+    
+    sessionStorage.setItem('currentHRView', viewId);
 }
 
 // ==================== CREATE TICKET MODAL ====================
@@ -1929,7 +1934,8 @@ async function init() {
     window.openImportCSVModal = openImportCSVModal;
     window.processCSVUpload = processCSVUpload;
 
-    navigate('view-dashboard');
+    const savedView = sessionStorage.getItem('currentHRView');
+    navigate(savedView || 'view-dashboard');
 }
 
 function closeMenu() {
