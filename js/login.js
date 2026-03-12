@@ -1,4 +1,4 @@
-// login.js – updated with HR-first check and forgot password function
+// login.js – updated with redirect after login
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -12,7 +12,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         return;
     }
 
-    // 👉 Check HR first, then employee (avoids HR users with accidental employee records)
+    // Check HR first, then employee
     const { data: hr } = await supabaseClient
         .from('hr_staff')
         .select('id')
@@ -20,7 +20,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         .maybeSingle();
 
     if (hr) {
-        window.location.href = '/hr/dashboard.html';
+        // HR redirect: if there's a redirect param, use it, else go to dashboard
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirect = urlParams.get('redirect');
+        window.location.href = redirect ? decodeURIComponent(redirect) : '/hr/dashboard.html';
         return;
     }
 
@@ -31,7 +34,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         .maybeSingle();
 
     if (employee) {
-        window.location.href = '/employee/tickets.html';
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirect = urlParams.get('redirect');
+        window.location.href = redirect ? decodeURIComponent(redirect) : '/employee/tickets.html';
         return;
     }
 
@@ -45,7 +50,7 @@ async function forgotPassword() {
     if (!email) return;
 
     const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/reset-password.html', // you'll need to create this page later
+        redirectTo: window.location.origin + '/reset-password.html',
     });
 
     if (error) {
